@@ -6,7 +6,7 @@
 <title>Galaga</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
-html, body { 
+html, body {
   width: 100%; height: 100%; overflow: hidden;
   background: #000; touch-action: none;
   user-select: none; -webkit-user-select: none;
@@ -84,6 +84,41 @@ function playSound(type) {
       g.gain.exponentialRampToValueAtTime(0.1,t+0.01);
       g.gain.exponentialRampToValueAtTime(0.001,t+0.4);
       osc.start(t); osc.stop(t+0.42); break;
+    case 'waveClear':
+      osc.type='sine';
+      osc.frequency.setValueAtTime(440,t);
+      osc.frequency.setValueAtTime(554,t+0.08);
+      osc.frequency.setValueAtTime(659,t+0.16);
+      osc.frequency.setValueAtTime(880,t+0.24);
+      g.gain.exponentialRampToValueAtTime(0.14,t+0.01);
+      g.gain.exponentialRampToValueAtTime(0.001,t+0.45);
+      osc.start(t); osc.stop(t+0.46); break;
+    case 'bossWarn':
+      osc.type='square'; osc.frequency.setValueAtTime(800,t);
+      osc.frequency.setValueAtTime(600,t+0.1);
+      osc.frequency.setValueAtTime(800,t+0.2);
+      osc.frequency.setValueAtTime(600,t+0.3);
+      g.gain.exponentialRampToValueAtTime(0.08,t+0.01);
+      g.gain.exponentialRampToValueAtTime(0.001,t+0.35);
+      osc.start(t); osc.stop(t+0.36); break;
+    case 'tractorBeam':
+      osc.type='sawtooth'; osc.frequency.setValueAtTime(80,t);
+      osc.frequency.linearRampToValueAtTime(120,t+0.5);
+      g.gain.exponentialRampToValueAtTime(0.06,t+0.01);
+      g.gain.exponentialRampToValueAtTime(0.001,t+0.5);
+      osc.start(t); osc.stop(t+0.51); break;
+    case 'beamBreak':
+      osc.type='square'; osc.frequency.setValueAtTime(200,t);
+      osc.frequency.exponentialRampToValueAtTime(800,t+0.1);
+      g.gain.exponentialRampToValueAtTime(0.1,t+0.01);
+      g.gain.exponentialRampToValueAtTime(0.001,t+0.12);
+      osc.start(t); osc.stop(t+0.13); break;
+    case 'dualLost':
+      osc.type='sawtooth'; osc.frequency.setValueAtTime(600,t);
+      osc.frequency.exponentialRampToValueAtTime(100,t+0.3);
+      g.gain.exponentialRampToValueAtTime(0.1,t+0.01);
+      g.gain.exponentialRampToValueAtTime(0.001,t+0.3);
+      osc.start(t); osc.stop(t+0.31); break;
   }
 }
 
@@ -91,15 +126,16 @@ function playSound(type) {
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 let W, H;
+const dprMax = 2;
 
 function resize() {
   W = window.innerWidth; H = window.innerHeight;
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const dpr = Math.min(window.devicePixelRatio || 1, dprMax);
   canvas.width = W * dpr; canvas.height = H * dpr;
   canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 }
-window.addEventListener('resize', resize);
+window.addEventListener('resize', () => { resize(); updateBtns(); });
 resize();
 
 // ===== GAME STATE =====
@@ -111,10 +147,18 @@ let waveTimer = 0;
 let shakeTimer = 0, shakeIntensity = 0;
 let flashTimer = 0;
 let frameNum = 0;
+let waveClearTimer = 0, waveClearMsg = '';
 
-// Stars with parallax
+// Tractor beam state
+let tractorBeam = null;  // {x, y, angle, timer}
+let tractorBeamTimer = 0;
+let tractorBeamAlpha = 0;
+let tractorBeamBreak = false;
+
+// Star field (optimized count for mobile)
+let starCount = (W > 600) ? 80 : 60;
 let stars = [];
-for (let i = 0; i < 90; i++) stars.push({
+for (let i = 0; i < starCount; i++) stars.push({
   x: Math.random() * W, y: Math.random() * H,
   speed: 0.15 + Math.random() * 0.4, size: 0.4 + Math.random() * 0.8,
   alpha: 0.2 + Math.random() * 0.3, phase: Math.random() * Math.PI * 2
@@ -131,7 +175,8 @@ let player = {
   x: 200, y: 0, w: 28, h: 28,
   vx: 0, targetVx: 0,
   bullets: [], fireRate: 35, fireCD: 0,
-  inv: 0, dual: false, thrust: 0
+  inv: 0, dual: false, thrust: 0,
+  caught: false, caughtTimer: 0  // tractor beam
 };
 
 // ===== ENEMIES =====
@@ -149,74 +194,108 @@ function mkForm() {
   const sp = Math.min(50, W / (cols + 2));
   const sx = W/2 - (cols*sp)/2 + sp/2;
   const types = ['bee','butter','bee','butter','boss'];
+  // Pick champion boss (tractor beam) on odd waves or random
+  let championIdx = -1;
+  if (wave % 2 === 1 && wave > 0) {
+    championIdx = 4 * cols; // Boss row first col
+  } else if (Math.random() < 0.5 && enemies.length > 0) {
+    championIdx = 4 * cols + Math.floor(Math.random() * cols);
+  }
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < cols; c++) {
       const t = types[r % 5];
       const d = ET[t];
+      const isChampion = (r===4 && c===0) || (championIdx === r*cols+c);
       enemies.push({
         x: sx+c*sp, y: 95+r*sp,
         hx: sx+c*sp, hy: 95+r*sp,
         w: d.w, h: d.h, hp: d.hp, mhp: d.hp,
-        sc: d.sc, type: t, st: 'form', ph: Math.random()*Math.PI*2,
+        sc: d.sc, type: t, st: 'form',
+        ph: Math.random()*Math.PI*2,
         on: true, al: true,
         sht: 80+Math.random()*120,
-        dt: (t==='boss'||t==='boss2') ? 150+Math.random()*180 : -1,
+        dt: (t==='boss'||t==='boss2') ? 120+Math.random()*180 : -1,
         dp: 0, da: 0, scnt: 0, ft: 0,
-        diveAngle: 0
+        divePhase: 0,  // 0=approach, 1=dive, 2=return
+        diveTimer: 0,
+        diveApproachX: 0,
+        diveReturnX: 0,
+        diveReturnY: 0,
+        champion: isChampion,  // tractor beam user
+        deathAnim: 0  // frames remaining for death anim
       });
     }
   }
-  powerups = []; scorePopups = [];
+  powerups = []; scorePopups = []; tractorBeam = null;
+  tractorBeamTimer = 0; tractorBeamAlpha = 0;
+  player.caught = false; player.caughtTimer = 0;
 }
 
 function eVis(e) { return e.st==='form' ? e.x+formationX : e.x; }
 
 // ===== INPUT =====
 let keys = {};
-let touchMoving = false, lastTouchX = 0, lastTouchY = 0;
+let touchLeft = false, touchRight = false, touchFire = false;
+let lastTouchX = 0, lastTouchY = 0, touchMoving = false;
+let leftBtnX = 0, leftBtnY = 0, leftBtnR = 35;
+let rightBtnX = 0, rightBtnY = 0, rightBtnR = 35;
 let fireBtnX = 0, fireBtnY = 0, fireBtnR = 55;
 
-function updateFireBtn() {
-  fireBtnX = W - 75;
-  fireBtnY = H - 105;
-  fireBtnR = Math.min(55, W * 0.12);
+function updateBtns() {
+  const safeBottom = 30;
+  const bottomY = H - safeBottom;
+  leftBtnX = W * 0.12;
+  leftBtnY = bottomY;
+  rightBtnX = W * 0.32;
+  rightBtnY = bottomY;
+  fireBtnX = W - 70;
+  fireBtnY = bottomY;
+  const br = Math.min(55, W * 0.11);
+  leftBtnR = rightBtnR = br;
+  fireBtnR = br * 1.3;
 }
-updateFireBtn();
-window.addEventListener('resize', () => { resize(); updateFireBtn(); });
+updateBtns();
 
-document.addEventListener('keydown', (e) => { 
-  keys[e.key] = true; initAudio(); 
-  if (state === STATE.MENU) { start(); return; }
-  if (state === STATE.GAMEOVER) { state = STATE.MENU; return; }
-  if (e.key===' ' || e.key==='j' || e.key==='J') {
-    e.preventDefault();
-    if (player.fireCD <= 0) fire();
-  }
-});
-document.addEventListener('keyup', (e) => { keys[e.key] = false; });
-
+// Touch/pointer handlers
+let allTouchActive = false;
 canvas.addEventListener('pointerdown', (e) => {
   e.preventDefault(); initAudio();
+  const x = e.clientX, y = e.clientY;
   if (state === STATE.MENU) { start(); return; }
   if (state === STATE.GAMEOVER) { state = STATE.MENU; return; }
-  const x = e.clientX, y = e.clientY;
-  // Fire button on right side
-  if (Math.hypot(x-fireBtnX, y-fireBtnY) < fireBtnR*1.2) {
+  
+  const dx = x - fireBtnX, dy = y - fireBtnY;
+  if (Math.hypot(dx, dy) < fireBtnR * 1.3) {
+    touchFire = true;
     fire();
     return;
   }
-  // Movement on left side
-  touchMoving = true;
-  lastTouchX = x;
-  lastTouchY = y;
+  
+  // Left button
+  const dL = x - leftBtnX, dyL = y - leftBtnY;
+  if (Math.hypot(dL, dyL) < leftBtnR * 1.3) {
+    touchLeft = true;
+    return;
+  }
+  // Right button
+  const dR = x - rightBtnX, dyR = y - rightBtnY;
+  if (Math.hypot(dR, dyR) < rightBtnR * 1.3) {
+    touchRight = true;
+    return;
+  }
+  // Drag move on left side
+  if (x < W * 0.45) {
+    touchMoving = true;
+    lastTouchX = x;
+    lastTouchY = y;
+  }
 });
 
 canvas.addEventListener('pointermove', (e) => {
   e.preventDefault();
   if (touchMoving) {
     const dx = e.clientX - lastTouchX;
-    const dy = e.clientY - lastTouchY;
-    player.targetVx += dx * 0.12;
+    player.targetVx += dx * 0.15;
     lastTouchX = e.clientX;
     lastTouchY = e.clientY;
   }
@@ -225,7 +304,33 @@ canvas.addEventListener('pointermove', (e) => {
 canvas.addEventListener('pointerup', (e) => {
   e.preventDefault();
   touchMoving = false;
+  touchLeft = false;
+  touchRight = false;
+  touchFire = false;
 });
+
+canvas.addEventListener('pointercancel', (e) => {
+  e.preventDefault();
+  touchMoving = false;
+  touchLeft = false;
+  touchRight = false;
+  touchFire = false;
+});
+
+// Prevent context menu and scrolling
+document.addEventListener('contextmenu', (e) => e.preventDefault());
+document.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
+
+document.addEventListener('keydown', (e) => {
+  keys[e.key] = true; initAudio();
+  if (state === STATE.MENU) { start(); return; }
+  if (state === STATE.GAMEOVER) { state = STATE.MENU; return; }
+  if (e.key===' ' || e.key==='j' || e.key==='J') {
+    e.preventDefault();
+    if (player.fireCD <= 0) fire();
+  }
+});
+document.addEventListener('keyup', (e) => { keys[e.key] = false; });
 
 function fire() {
   if (player.fireCD > 0) return;
@@ -245,9 +350,24 @@ function start() {
   player.x = W/2; player.y = H-85;
   player.bullets = []; player.fireCD = 0; player.inv = 150; player.dual = false;
   player.vx = 0; player.targetVx = 0; player.thrust = 0;
+  player.caught = false; player.caughtTimer = 0;
   enemyBullets = []; particles = []; powerups = []; scorePopups = [];
   shakeTimer = 0; flashTimer = 0; frameNum = 0;
+  waveClearTimer = 0; waveClearMsg = '';
+  tractorBeam = null; tractorBeamTimer = 0; tractorBeamAlpha = 0;
   mkForm();
+}
+
+// ===== ENEMY DIVE WITH RETURN (Boss Galaga style) =====
+function startDive(e) {
+  e.st = 'dive';
+  e.divePhase = 0;
+  e.diveTimer = 0;
+  e.scnt = 0;
+  e.diveApproachX = player.x + (Math.random()-0.5) * 60;
+  e.diveReturnX = e.hx;
+  e.diveReturnY = e.hy;
+  playSound('dive');
 }
 
 // ===== UPDATE =====
@@ -276,22 +396,72 @@ function update() {
   // === PLAYING ===
   player.inv = Math.max(0, player.inv-1);
   player.fireCD = Math.max(0, player.fireCD-1);
-  if (comboTimer>0) comboTimer--; else combo=0;
+  if (comboTimer>0) { comboTimer--; } else { combo=0; }
   if (shakeTimer>0) shakeTimer--;
   if (flashTimer>0) flashTimer--;
+  if (waveClearTimer>0) waveClearTimer--;
+  
+  // Tractor beam
+  if (tractorBeam) {
+    tractorBeam.timer--;
+    tractorBeamAlpha = Math.min(1, tractorBeamAlpha + 0.08);
+    if (tractorBeam.timer <= 0) {
+      tractorBeamAlpha = 0;
+      playSound('beamBreak');
+      tractorBeam = null;
+    }
+    // Pull player toward beam target
+    if (tractorBeamAlpha > 0.5 && !player.caught) {
+      const bx = tractorBeam.x, by = tractorBeam.y;
+      const dist = Math.hypot(bx-player.x, by-player.y);
+      if (dist < 22) {
+        player.caught = true;
+        player.caughtTimer = 0;
+      }
+    }
+    if (player.caught) {
+      player.caughtTimer++;
+      const pullStrength = 0.35;
+      const bx = tractorBeam.x, by = tractorBeam.y;
+      const dx = bx - player.x, dy = by - player.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist > 5) {
+        player.x += (dx/dist) * pullStrength;
+        player.y += (dy/dist) * pullStrength;
+      }
+      if (player.caughtTimer > 150) {
+        // Lost dual fighter
+        if (player.dual) {
+          player.dual = false;
+          playSound('dualLost');
+          spawnP(player.x, player.y, '#ff00ff', 8);
+          shakeTimer = 8; shakeIntensity = 5;
+        }
+        player.caught = false;
+        player.caughtTimer = 0;
+        tractorBeamAlpha = 0;
+        tractorBeam = null;
+      }
+    }
+  }
+  
+  // Touch button movement
+  if (touchLeft) player.targetVx -= 0.4;
+  if (touchRight) player.targetVx += 0.4;
+  if (touchFire && player.fireCD <= 0) fire();
+  
+  // Keyboard movement
+  if (keys['ArrowLeft'] || keys['a']) player.targetVx -= 0.4;
+  if (keys['ArrowRight'] || keys['d']) player.targetVx += 0.4;
   
   // Smooth movement with physics
-  const accel = 0.35;
   const friction = 0.88;
   player.targetVx *= friction;
-  if (keys['ArrowLeft'] || keys['a']) player.targetVx -= accel;
-  if (keys['ArrowRight'] || keys['d']) player.targetVx += accel;
-  player.targetVx = Math.max(-5, Math.min(5, player.targetVx));
-  player.vx += (player.targetVx - player.vx) * 0.3;
+  player.targetVx = Math.max(-6, Math.min(6, player.targetVx));
+  player.vx += (player.targetVx - player.vx) * 0.25;
   player.x += player.vx;
   player.x = Math.max(player.w/2, Math.min(W-player.w/2, player.x));
-  player.y = H-85;
-  
+  player.y = H - 85;
   player.thrust = Math.abs(player.vx) / 5;
   
   // Player bullets
@@ -305,24 +475,47 @@ function update() {
   formationX += formationDir * (0.2 + wave*0.03);
   if (Math.abs(formationX) > 20) formationDir *= -1;
   
+  // Tractor beam trigger: champion boss fires
+  tractorBeamTimer--;
+  const champions = enemies.filter(e => e.on && e.al && e.champion && e.st === 'form');
+  if (champions.length > 0 && tractorBeam === null && tractorBeamTimer <= 0) {
+    const champ = champions[Math.floor(Math.random()*champions.length)];
+    if (champ.dt <= 0) {
+      // Fire tractor beam
+      const angle = Math.atan2(player.y - champ.y, player.x - champ.x);
+      const beamDist = 250 + Math.random()*100;
+      tractorBeam = {
+        x: champ.x + Math.cos(angle)*beamDist,
+        y: champ.y + Math.sin(angle)*beamDist,
+        angle: angle,
+        timer: 80
+      };
+      tractorBeamTimer = 250 + Math.random()*200;
+      playSound('bossWarn');
+    }
+  }
+  
+  // Disable champion's normal dive while beam is active
+  // Champions don't dive until beam is done
+  
   // Enemies
   for (const e of enemies) {
     if (!e.on || !e.al) continue;
     e.ft = Math.max(0, e.ft-1);
     
+    // Death animation (spin + shrink before explosion)
+    if (e.deathAnim > 0) {
+      e.deathAnim--;
+      continue;  // skip all other behavior during death anim
+    }
+    
     if (e.st === 'form') {
       e.y = e.hy + Math.sin(Date.now()*0.0015+e.ph) * 2;
       
-      // Dive
-      if (e.dt > 0) {
+      // Normal dive (not champion while beam active)
+      if (e.dt > 0 && !(e.champion && tractorBeam !== null)) {
         e.dt--;
-        if (e.dt <= 0) {
-          e.st = 'dive';
-          e.dp = 0;
-          e.scnt = 0;
-          e.diveAngle = Math.atan2(player.y - e.y, player.x - e.x);
-          playSound('dive');
-        }
+        if (e.dt <= 0) startDive(e);
       }
       
       // Galaga-style: rare shots, max 1 per dive
@@ -334,36 +527,60 @@ function update() {
       }
     }
     
-    // Dive - Galaga style: curving downward
+    // Dive with return (Boss Galaga style swooping arc)
     if (e.st === 'dive') {
+      e.diveTimer++;
       const dx = player.x - e.x;
       const dy = player.y - e.y;
-      e.x += Math.cos(e.diveAngle) * 1.3;
-      e.y += Math.sin(e.diveAngle) * 1.3;
       
-      // Slight curve toward player
-      if (dx > 0) e.x += 0.15; else if (dx < 0) e.x -= 0.15;
+      if (e.divePhase === 0) {
+        // Approach: fly toward player's column
+        e.x += (e.diveApproachX - e.x) * 0.04;
+        e.y += 0.8;
+        if (e.diveTimer > 40 || Math.abs(e.x - e.diveApproachX) < 15) {
+          e.divePhase = 1;
+          e.diveTimer = 0;
+        }
+      } else if (e.divePhase === 1) {
+        // Dive: arc toward player
+        const diveAngle = e.diveAngle || 0;
+        e.x += Math.cos(diveAngle) * 1.4;
+        e.y += Math.sin(diveAngle) * 1.4;
+        // Curve toward player
+        if (dx > 0) e.x += 0.2; else if (dx < 0) e.x -= 0.2;
+        
+        if (e.y > player.y + 30 || e.y > H + 15) {
+          e.divePhase = 2;
+          e.diveTimer = 0;
+        }
+      } else if (e.divePhase === 2) {
+        // Return: curve back to formation
+        e.x += (e.diveReturnX - e.x) * 0.03;
+        e.y += (e.diveReturnY - e.y) * 0.03;
+        
+        if (Math.abs(e.y - e.diveReturnY) < 8 && Math.abs(e.x - e.diveReturnX) < 8) {
+          e.st = 'form';
+          e.divePhase = 0;
+          e.diveTimer = 0;
+          e.dt = 120 + Math.random() * 180;
+        }
+      }
       
       // Can shoot once during dive
-      if (e.scnt < 1 && Math.random() < 0.02) {
+      if (e.scnt < 1 && Math.random() < 0.015) {
         e.scnt++;
         shootAimed(e, e.x);
       }
-      
-      if (e.y > player.y + 40 || e.y > H+15) {
-        e.st = 'retreat';
-        e.da = Math.atan2(-1, 0);
-      }
     }
     
-    // Retreat
+    // Retreat (fallback for enemies that fell off screen)
     if (e.st === 'retreat') {
       e.x += Math.cos(e.da)*1.5;
       e.y += Math.sin(e.da)*1.5;
       if (e.y < -40) {
         e.st = 'form';
-        e.x = e.hx;
-        e.y = e.hy;
+        e.x = e.hx; e.y = e.hy;
+        e.divePhase = 0;
       }
     }
   }
@@ -379,8 +596,8 @@ function update() {
     
     if (b.y>H+20 || b.x<-20 || b.x>W+20) { enemyBullets.splice(i,1); continue; }
     
-    // Collision
-    if (player.inv<=0) {
+    // Collision (player hitbox with eVis)
+    if (player.inv<=0 && !player.caught) {
       if (b.x>player.x-16 && b.x<player.x+16 && b.y>player.y-14 && b.y<player.y+14) {
         enemyBullets.splice(i,1);
         hitPlayer();
@@ -395,6 +612,7 @@ function update() {
     
     for (const e of enemies) {
       if (!e.on || !e.al) continue;
+      if (e.deathAnim > 0) continue;  // don't hit during death anim
       const ex = eVis(e);
       if (b.x>ex-14 && b.x<ex+14 && b.y>e.y-12 && b.y<e.y+12) {
         player.bullets.splice(bi,1);
@@ -402,17 +620,14 @@ function update() {
         e.ft = 5;
         
         if (e.hp<=0) {
-          e.on=false; e.al=false;
+          e.deathAnim = 15;  // spin/shrink for 15 frames before explosion
           const pts = e.sc*(1+Math.floor(combo/3));
           score += pts;
           combo++;
           comboTimer = 100;
           scorePopups.push({x:ex, y:e.y, text:'+'+pts.toString(), life:50, c:'#ffff00'});
-          playSound('explode');
-          spawnP(ex, e.y, e.c, 8);
-          if ((e.type==='boss'||e.type==='boss2') && Math.random()<0.3) {
-            powerups.push({x:ex, y:e.y, vy:1, t:'dual', life:350, w:20, h:10});
-          }
+          shakeTimer = 4; shakeIntensity = 3;
+          // Don't play explosion yet — death anim plays first
         } else {
           spawnP(b.x, b.y, '#ffffff', 2);
         }
@@ -421,9 +636,40 @@ function update() {
     }
   }
   
-  // Enemy collision
+  // Spawn explosions after death anim completes
   for (const e of enemies) {
-    if (!e.on || !e.al || player.inv>0) continue;
+    if (e.deathAnim === 1 && e.on && e.al) {
+      // Last frame of death anim — spawn explosion
+      const ex = eVis(e);
+      e.on=false; e.al=false;
+      playSound('explode');
+      spawnP(ex, e.y, e.c, 10);
+      spawnP(ex, e.y, '#fff', 4);
+      
+      // Boss explosions are bigger
+      if (e.type==='boss'||e.type==='boss2') {
+        shakeTimer = 6; shakeIntensity = 5;
+        spawnP(ex, e.y, '#fff', 6);
+        if (e.type==='boss2') {
+          shakeTimer = 8; shakeIntensity = 7;
+        }
+      }
+      
+      // Powerup drop
+      if ((e.type==='boss'||e.type==='boss2') && Math.random()<0.35) {
+        powerups.push({x:ex, y:e.y, vy:1, t:'dual', life:350, w:20, h:10});
+      }
+      
+      // Wave clear explosion if this was the last enemy
+      if (enemies.filter(en=>en.on&&en.al).length === 0) {
+        for (let ii=0;ii<3;ii++) spawnP(ex+(Math.random()-0.5)*100, e.y+(Math.random()-0.5)*40, ['#ff0','#f0f','#0ff'][ii], 5);
+      }
+    }
+  }
+  
+  // Enemy collision (player vs enemy body — with eVis)
+  for (const e of enemies) {
+    if (!e.on || !e.al || e.deathAnim > 0 || player.inv>0) continue;
     const ex = eVis(e);
     if (Math.hypot(ex-player.x, e.y-player.y) < Math.max(e.w,e.h)/2+player.w/2-3) {
       e.on=false; e.al=false;
@@ -432,13 +678,24 @@ function update() {
     }
   }
   
-  // Wave
+  // Wave clear
   const alive = enemies.filter(e=>e.on&&e.al).length;
   if (alive===0 && enemies.length>0) {
     wave++;
     if (wave>25) wave=25;
     state = STATE.WAVE_TRANS;
     waveTimer = 100;
+    waveClearTimer = 90;
+    waveClearMsg = 'WAVE '+wave+' CLEAR';
+    playSound('waveClear');
+    // Big celebration burst
+    for (let i=0;i<5;i++) {
+      const bx = Math.random()*W, by = H*0.3+Math.random()*H*0.3;
+      const cols = ['#ff0','#f0f','#0ff','#f80','#fff'];
+      spawnP(bx, by, cols[Math.floor(Math.random()*cols.length)], 8);
+    }
+    shakeTimer = 10; shakeIntensity = 10;
+    flashTimer = 5;
   }
   
   // Powerups
@@ -450,7 +707,7 @@ function update() {
     if (Math.abs(p.x-player.x)<22 && Math.abs(p.y-player.y)<22) {
       player.dual = true;
       playSound('powerup');
-      spawnP(p.x, p.y, '#ffcc00', 6);
+      spawnP(p.x, p.y, '#ffcc00', 8);
       powerups.splice(i,1);
     }
   }
@@ -458,11 +715,12 @@ function update() {
   // Score popups
   for (let i=scorePopups.length-1;i>=0;i--) {
     scorePopups[i].life--;
-    scorePopups[i].y -= 0.3;
+    scorePopups[i].y -= 0.4;
     if (scorePopups[i].life<=0) scorePopups.splice(i,1);
   }
   
-  // Particles
+  // Particles (cap to prevent lag)
+  const maxParticles = 60;
   for (let i=particles.length-1;i>=0;i--) {
     particles[i].life--;
     particles[i].x+=particles[i].vx;
@@ -472,8 +730,12 @@ function update() {
     particles[i].vy *= 0.96;
     if (particles[i].life<=0) particles.splice(i,1);
   }
+  // Trim excess particles
+  if (particles.length > maxParticles) {
+    particles.splice(0, particles.length - maxParticles);
+  }
   
-  // Stars
+  // Stars (only update during play or menu)
   for (const s of stars) {
     s.y += s.speed;
     if (s.y > H) { s.y = 0; s.x = Math.random()*W; }
@@ -494,7 +756,6 @@ function shootAimed(e, x) {
 }
 
 function hitPlayer() {
-  lives--;
   playSound('bigExplode');
   spawnP(player.x, player.y, '#00ccff', 12);
   shakeTimer = 12;
@@ -505,18 +766,23 @@ function hitPlayer() {
     state = STATE.GAMEOVER;
     if (score > highScore) { highScore = score; localStorage.setItem('galaga_hs', highScore.toString()); }
     playSound('gameover');
-    spawnP(player.x, player.y, '#00ffff', 18);
-    spawnP(player.x, player.y, '#ffffff', 8);
+    spawnP(player.x, player.y, '#00ffff', 20);
+    spawnP(player.x, player.y, '#ffffff', 10);
+    shakeTimer = 18; shakeIntensity = 14;
+    flashTimer = 10;
   } else {
     player.x = W/2;
     player.inv = 180;
     player.dual = false;
     combo = 0;
     player.vx = 0; player.targetVx = 0;
+    player.caught = false;
+    player.caughtTimer = 0;
   }
 }
 
 function spawnP(x, y, c, n) {
+  if (particles.length > 55) return;  // safety cap
   for (let i=0; i<n; i++) {
     const a = Math.random()*Math.PI*2;
     const s = 0.6 + Math.random()*2.8;
@@ -550,27 +816,62 @@ function draw() {
   
   if (flashTimer>0) {
     ctx.fillStyle = '#ff0000';
-    ctx.globalAlpha = flashTimer/7;
+    ctx.globalAlpha = Math.min(flashTimer/7, 0.4);
     ctx.fillRect(0,0,W,H);
     ctx.globalAlpha = 1;
   }
   
+  // Buttons
+  if (state===STATE.PLAYING) drawButtons();
+}
+
+function drawButtons() {
+  const isPressed = touchLeft || touchRight || touchFire;
+  
+  // Left button
+  ctx.save();
+  ctx.fillStyle = touchLeft ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.10)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(leftBtnX, leftBtnY, leftBtnR, 0, Math.PI*2);
+  ctx.fill(); ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,0.45)';
+  ctx.font = 'bold 11px monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('<', leftBtnX, leftBtnY);
+  ctx.restore();
+  
+  // Right button
+  ctx.save();
+  ctx.fillStyle = touchRight ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.10)';
+  ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(rightBtnX, rightBtnY, rightBtnR, 0, Math.PI*2);
+  ctx.fill(); ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,0.45)';
+  ctx.font = 'bold 11px monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('>', rightBtnX, rightBtnY);
+  ctx.restore();
+  
   // Fire button
-  if (state===STATE.PLAYING) {
-    ctx.save();
-    ctx.fillStyle = 'rgba(255,255,255,0.12)';
-    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(fireBtnX, fireBtnY, fireBtnR, 0, Math.PI*2);
-    ctx.fill(); ctx.stroke();
-    ctx.fillStyle = 'rgba(255,255,255,0.55)';
-    ctx.font = 'bold 12px monospace';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('FIRE', fireBtnX, fireBtnY);
-    ctx.restore();
-  }
+  ctx.save();
+  ctx.fillStyle = touchFire ? 'rgba(255,80,80,0.25)' : 'rgba(255,255,255,0.12)';
+  ctx.strokeStyle = touchFire ? 'rgba(255,100,100,0.5)' : 'rgba(255,255,255,0.35)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(fireBtnX, fireBtnY, fireBtnR, 0, Math.PI*2);
+  ctx.fill(); ctx.stroke();
+  ctx.fillStyle = touchFire ? 'rgba(255,200,200,0.7)' : 'rgba(255,255,255,0.55)';
+  ctx.font = 'bold 11px monospace';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('FIRE', fireBtnX, fireBtnY);
+  ctx.restore();
 }
 
 function drawMenu() {
@@ -617,6 +918,32 @@ function drawGame() {
     ctx.fillStyle = '#ff0';
     ctx.font = '10px monospace';
     ctx.fillText('COMBO x'+(Math.floor(combo/3)+1), W/2, 36);
+  }
+  
+  // Tractor beam
+  if (tractorBeam) {
+    ctx.save();
+    const tx = tractorBeam.x, ty = tractorBeam.y;
+    // Beam line from boss direction to target
+    ctx.strokeStyle = `rgba(255,50,50,${0.3*tractorBeamAlpha})`;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(tx - Math.cos(tractorBeam.angle)*200, ty - Math.sin(tractorBeam.angle)*200);
+    ctx.lineTo(tx, ty);
+    ctx.stroke();
+    // Beam core
+    ctx.strokeStyle = `rgba(255,150,150,${0.6*tractorBeamAlpha})`;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(tx - Math.cos(tractorBeam.angle)*200, ty - Math.sin(tractorBeam.angle)*200);
+    ctx.lineTo(tx, ty);
+    ctx.stroke();
+    // Beam target glow
+    ctx.fillStyle = `rgba(255,80,80,${0.4*tractorBeamAlpha})`;
+    ctx.beginPath();
+    ctx.arc(tx, ty, 8, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
   }
   
   // Player ship
@@ -666,6 +993,15 @@ function drawGame() {
     ctx.globalAlpha = 1;
   }
   
+  // Caught indicator (tractor beam pulling)
+  if (player.caught) {
+    ctx.strokeStyle = 'rgba(255,50,50,0.5)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(0, 0, 18, 0, Math.PI*2);
+    ctx.stroke();
+  }
+  
   ctx.restore();
   
   // Player bullets
@@ -679,6 +1015,27 @@ function drawGame() {
   // Enemies
   for (const e of enemies) {
     if (!e.on || !e.al) continue;
+    
+    // Death animation: spin + shrink
+    if (e.deathAnim > 0) {
+      ctx.save();
+      const ex = eVis(e);
+      ctx.translate(ex, e.y);
+      const rot = (15 - e.deathAnim) * 0.2;
+      ctx.rotate(rot);
+      const scale = e.deathAnim / 15;
+      ctx.scale(scale, scale);
+      ctx.fillStyle = e.ft>0?'#fff':'#fff';
+      ctx.shadowColor='#fff'; ctx.shadowBlur=8;
+      ctx.beginPath();
+      ctx.moveTo(0,-e.h/2); ctx.lineTo(-e.w/2,0);
+      ctx.lineTo(-e.w/3,e.h/2); ctx.lineTo(e.w/3,e.h/2);
+      ctx.lineTo(e.w/2,0);
+      ctx.closePath(); ctx.fill();
+      ctx.restore();
+      continue;
+    }
+    
     ctx.save();
     const ex = eVis(e);
     ctx.translate(ex, e.y);
@@ -711,6 +1068,14 @@ function drawGame() {
     ctx.fillStyle = '#000'; ctx.shadowBlur=0;
     ctx.beginPath(); ctx.arc(-e.w/5,-1,2,0,Math.PI*2); ctx.fill();
     ctx.beginPath(); ctx.arc(e.w/5,-1,2,0,Math.PI*2); ctx.fill();
+    
+    // Champion indicator (tractor beam boss)
+    if (e.champion) {
+      ctx.fillStyle = '#ff0';
+      ctx.font = 'bold 8px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('★', 0, -e.h/2 - 4);
+    }
     
     // HP bar for bosses
     if (e.mhp>1 && e.hp<e.mhp) {
@@ -757,7 +1122,7 @@ function drawGame() {
     ctx.fillStyle = p.c;
     ctx.font = 'bold 10px monospace';
     ctx.textAlign = 'center';
-    ctx.globalAlpha = p.life/40;
+    ctx.globalAlpha = Math.min(p.life/30, 1);
     ctx.shadowColor=p.c; ctx.shadowBlur=3;
     ctx.fillText(p.text, p.x, p.y);
     ctx.restore();
@@ -787,6 +1152,24 @@ function drawGame() {
     ctx.fillText('Get ready...', W/2, H/2+18);
     ctx.restore();
   }
+  
+  // Wave clear celebration
+  if (waveClearTimer > 0) {
+    ctx.save();
+    const fadeIn = Math.min(1, (90 - waveClearTimer) / 15);
+    ctx.globalAlpha = fadeIn;
+    ctx.fillStyle = '#ff0';
+    ctx.font = 'bold 28px monospace';
+    ctx.textAlign = 'center';
+    ctx.shadowColor='#ff0'; ctx.shadowBlur=15;
+    ctx.fillText(waveClearMsg, W/2, H*0.3);
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = '#fff';
+    ctx.font = '13px monospace';
+    ctx.globalAlpha = fadeIn * 0.7;
+    ctx.fillText('Great job!', W/2, H*0.35);
+    ctx.restore();
+  }
 }
 
 function drawOver() {
@@ -807,9 +1190,14 @@ function drawOver() {
   ctx.fillText('HIGH SCORE: '+highScore.toString().padStart(8,'0'), W/2, H*0.54);
   
   if (score>=highScore && score>0) {
-    ctx.fillStyle = '#ff0';
-    ctx.font = 'bold 16px monospace';
-    ctx.fillText('NEW HIGH SCORE!', W/2, H*0.6);
+    const blink = Math.sin(Date.now()*0.006)>0;
+    if (blink) {
+      ctx.fillStyle = '#ff0';
+      ctx.font = 'bold 16px monospace';
+      ctx.shadowColor='#ff0'; ctx.shadowBlur=10;
+      ctx.fillText('NEW HIGH SCORE!', W/2, H*0.6);
+      ctx.shadowBlur = 0;
+    }
   }
   
   ctx.fillStyle = '#ff0';
