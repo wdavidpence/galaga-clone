@@ -419,10 +419,10 @@ function mkForm() {
         ph: Math.random() * Math.PI * 2,
         on: true, al: true,
         sht: 80 + Math.random() * 120,
-        dt: (t === 'boss' || t === 'boss2') ? 120 + Math.random() * 180 : -1,
+        dt: (t === 'boss' || t === 'boss2') ? 300 + Math.random() * 400 : -1,
         dp: 0, da: 0, scnt: 0, ft: 0,
         divePhase: 0, diveTimer: 0,
-        diveApproachX: 0, diveReturnX: 0, diveReturnY: 0,
+        diveApproachX: 0,
         champion: isChampion,
         deathAnim: 0, spawnDelay: 0, spawnAnim: 0,
         attackPattern: 'normal', attackFireRate: 0.015
@@ -578,7 +578,8 @@ function update() {
   }
 
   if (attackWaveActive && nextAttackTime <= 0) {
-    const waveSize = 1 + Math.floor(Math.random() * 2); // 1-2 per wave
+    // Send ONLY 1 boss per attack wave (not the whole row!)
+    const waveSize = 1;
     const patterns = ['zigzag', 'spiral', 'diagonal', 'swarm'];
     const pattern = patterns[Math.floor(Math.random() * patterns.length)];
     const formEnemies = enemies.filter(e => e.on && e.al && e.st === 'form' && e.dt <= 0);
@@ -587,7 +588,7 @@ function update() {
       if (e.st === 'form' && e.dt <= 0) startAttackDive(e, pattern);
     }
     attackWaveCount++;
-    nextAttackTime = 360 + Math.random() * 240; // 6-10 seconds between waves
+    nextAttackTime = 450 + Math.random() * 200; // 7.5-10.5 seconds between waves
     shakeTimer = 6; shakeIntensity = 4;
   }
   if (nextAttackTime > 0) nextAttackTime--;
@@ -676,7 +677,6 @@ function update() {
           // Normal dive (not in attack wave)
           e.st = 'dive'; e.divePhase = 0; e.diveTimer = 0; e.scnt = 0;
           e.diveApproachX = player.x + (Math.random() - 0.5) * 60;
-          e.diveLoop = true;
           e.attackPattern = 'normal'; e.attackFireRate = 0.015;
           playSound('dive');
         }
@@ -691,43 +691,44 @@ function update() {
       e.diveTimer++;
       const dx = player.x - e.x, dy = player.y - e.y;
 
+      // Phase 1: Approach player with style
       if (e.divePhase === 0) {
-        e.x += (e.diveApproachX - e.x) * 0.04;
-        e.y += 0.8;
-        if (e.attackPattern === 'zigzag') e.x += Math.sin(e.diveTimer * 0.1) * 1.5;
-        else if (e.attackPattern === 'spiral') e.x += Math.cos(e.diveTimer * 0.08) * 1.2;
-        else if (e.attackPattern === 'diagonal') e.x += (dx > 0 ? 0.3 : -0.3);
-        if (e.diveTimer > 40 || Math.abs(e.x - e.diveApproachX) < 15) { e.divePhase = 1; e.diveTimer = 0; }
-      } else if (e.divePhase === 1) {
-        const diveAngle = Math.atan2(dy, dx);
-        e.x += Math.cos(diveAngle) * 1.4;
-        e.y += Math.sin(diveAngle) * 1.4;
-        if (e.attackPattern === 'u-turn') e.x += (e.diveTimer % 60 < 30 ? (dx > 0 ? 0.5 : -0.5) : (dx > 0 ? -0.5 : 0.5));
-        else if (e.attackPattern === 'swarm') { e.x += (dx > 0 ? 0.3 : -0.3); e.y += (dy > 0 ? 0.2 : -0.2); }
-        if (e.y > player.y + 30 || e.y > H + 15) { e.divePhase = 2; e.diveTimer = 0; }
-      } else if (e.divePhase === 2) {
-        // Loop-around: circle off-screen and re-enter from top
-        const loopSpeed = 0.6 + (wave * 0.04);
-        if (e.x > W + 10) { e.x = -15; e.y = e.y - 5; e.loopAngle = Math.PI * 1.5; }
-        else if (e.x < -15) { e.x = W + 10; e.y = e.y - 5; e.loopAngle = Math.PI * 0.5; }
-        if (e.y > H + 20) { e.y = -10; }
-        e.x += Math.cos(e.loopAngle) * loopSpeed;
-        e.y += Math.sin(e.loopAngle) * loopSpeed;
-        e.loopAngle += 0.015;
-        // When enemy reaches top area, transition to form
-        if (e.y < 30 && e.x > 20 && e.x < W - 20) {
-          e.st = 'form'; e.divePhase = 0; e.diveTimer = 0;
-          // Boss types rest 2.5-5.5s before diving again, regular 1.3-2s
-          const restFrames = (e.type === 'boss' || e.type === 'boss2') ? 150 + Math.random() * 180 : 80 + Math.random() * 100;
-          e.dt = restFrames;
+        const targetX = e.diveApproachX;
+        const targetY = player.y + 40; // Dive PAST player
+        e.x += (targetX - e.x) * 0.05;
+        e.y += 1.2;
+        // Add wave motion based on attack pattern
+        if (e.attackPattern === 'zigzag') e.x += Math.sin(e.diveTimer * 0.12) * 1.8;
+        else if (e.attackPattern === 'spiral') e.x += Math.cos(e.diveTimer * 0.09) * 1.4;
+        else if (e.attackPattern === 'diagonal') e.x += (dx > 0 ? 0.4 : -0.4);
+        // Transition to return phase when close to target
+        if (e.diveTimer > 35 || (Math.abs(e.x - targetX) < 12 && Math.abs(e.y - targetY) < 15)) {
+          e.divePhase = 1;
+          e.diveTimer = 0;
+        }
+      }
+      // Phase 2: Return to formation position
+      else if (e.divePhase === 1) {
+        const returnSpeed = 0.025 + wave * 0.003;
+        e.x += (e.hx - e.x) * returnSpeed;
+        e.y += (e.hy - e.y) * returnSpeed;
+        // Check if we've arrived at formation
+        if (Math.abs(e.y - e.hy) < 6 && Math.abs(e.x - e.hx) < 6) {
+          e.st = 'form';
+          e.divePhase = 0;
+          e.diveTimer = 0;
           e.attackPattern = 'normal';
-          e.x = e.hx; e.y = e.hy;
+          e.scnt = 0;
+          // Set rest delay based on enemy type
+          const restFrames = (e.type === 'boss' || e.type === 'boss2') ? 200 + Math.random() * 150 : 100 + Math.random() * 80;
+          e.dt = restFrames;
         }
       }
 
-      // Shooting: more aggressive during attack waves
-      if (e.scnt < 1 && Math.random() < (e.attackPattern !== 'normal' ? e.attackFireRate : 0.015)) {
-        e.scnt++; shootAimed(e, e.x);
+      // Shooting during dive
+      if (e.scnt < 1 && Math.random() < (e.attackPattern !== 'normal' ? e.attackFireRate : 0.012)) {
+        e.scnt++;
+        shootAimed(e, e.x);
       }
     }
 
