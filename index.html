@@ -119,6 +119,21 @@ function playSound(type) {
       g.gain.exponentialRampToValueAtTime(0.1,t+0.01);
       g.gain.exponentialRampToValueAtTime(0.001,t+0.3);
       osc.start(t); osc.stop(t+0.31); break;
+    case 'star':
+      osc.type='sine';
+      osc.frequency.setValueAtTime(1000,t);
+      osc.frequency.exponentialRampToValueAtTime(2000,t+0.15);
+      g.gain.exponentialRampToValueAtTime(0.08,t+0.01);
+      g.gain.exponentialRampToValueAtTime(0.001,t+0.2);
+      osc.start(t); osc.stop(t+0.21); break;
+    case 'superExplosion':
+      osc.type='sawtooth';
+      osc.frequency.setValueAtTime(100,t);
+      osc.frequency.setValueAtTime(200,t+0.05);
+      osc.frequency.exponentialRampToValueAtTime(20,t+0.5);
+      g.gain.exponentialRampToValueAtTime(0.2,t+0.01);
+      g.gain.exponentialRampToValueAtTime(0.001,t+0.5);
+      osc.start(t); osc.stop(t+0.52); break;
   }
 }
 
@@ -148,12 +163,12 @@ let shakeTimer = 0, shakeIntensity = 0;
 let flashTimer = 0;
 let frameNum = 0;
 let waveClearTimer = 0, waveClearMsg = '';
+let starRating = 0;
 
 // Tractor beam state
-let tractorBeam = null;  // {x, y, angle, timer}
+let tractorBeam = null;
 let tractorBeamTimer = 0;
 let tractorBeamAlpha = 0;
-let tractorBeamBreak = false;
 
 // Star field (optimized count for mobile)
 let starCount = (W > 600) ? 80 : 60;
@@ -168,7 +183,9 @@ let particles = [];
 let enemyBullets = [];
 let powerups = [];
 let scorePopups = [];
+let formParticles = [];
 let formationX = 0, formationDir = 1;
+let enemySpawnTimer = 0;
 
 // ===== PLAYER =====
 let player = {
@@ -176,7 +193,7 @@ let player = {
   vx: 0, targetVx: 0,
   bullets: [], fireRate: 35, fireCD: 0,
   inv: 0, dual: false, thrust: 0,
-  caught: false, caughtTimer: 0  // tractor beam
+  caught: false, caughtTimer: 0
 };
 
 // ===== ENEMIES =====
@@ -194,10 +211,9 @@ function mkForm() {
   const sp = Math.min(50, W / (cols + 2));
   const sx = W/2 - (cols*sp)/2 + sp/2;
   const types = ['bee','butter','bee','butter','boss'];
-  // Pick champion boss (tractor beam) on odd waves or random
   let championIdx = -1;
   if (wave % 2 === 1 && wave > 0) {
-    championIdx = 4 * cols; // Boss row first col
+    championIdx = 4 * cols;
   } else if (Math.random() < 0.5 && enemies.length > 0) {
     championIdx = 4 * cols + Math.floor(Math.random() * cols);
   }
@@ -216,19 +232,23 @@ function mkForm() {
         sht: 80+Math.random()*120,
         dt: (t==='boss'||t==='boss2') ? 120+Math.random()*180 : -1,
         dp: 0, da: 0, scnt: 0, ft: 0,
-        divePhase: 0,  // 0=approach, 1=dive, 2=return
+        divePhase: 0,
         diveTimer: 0,
         diveApproachX: 0,
         diveReturnX: 0,
         diveReturnY: 0,
-        champion: isChampion,  // tractor beam user
-        deathAnim: 0  // frames remaining for death anim
+        champion: isChampion,
+        deathAnim: 0,
+        spawnDelay: 0,
+        spawnAnim: 0
       });
     }
   }
-  powerups = []; scorePopups = []; tractorBeam = null;
+  powerups = []; scorePopups = []; formParticles = [];
+  tractorBeam = null;
   tractorBeamTimer = 0; tractorBeamAlpha = 0;
   player.caught = false; player.caughtTimer = 0;
+  enemySpawnTimer = 0;
 }
 
 function eVis(e) { return e.st==='form' ? e.x+formationX : e.x; }
@@ -256,39 +276,21 @@ function updateBtns() {
 }
 updateBtns();
 
-// Touch/pointer handlers
 let allTouchActive = false;
 canvas.addEventListener('pointerdown', (e) => {
   e.preventDefault(); initAudio();
   const x = e.clientX, y = e.clientY;
   if (state === STATE.MENU) { start(); return; }
   if (state === STATE.GAMEOVER) { state = STATE.MENU; return; }
-  
   const dx = x - fireBtnX, dy = y - fireBtnY;
   if (Math.hypot(dx, dy) < fireBtnR * 1.3) {
-    touchFire = true;
-    fire();
-    return;
+    touchFire = true; fire(); return;
   }
-  
-  // Left button
   const dL = x - leftBtnX, dyL = y - leftBtnY;
-  if (Math.hypot(dL, dyL) < leftBtnR * 1.3) {
-    touchLeft = true;
-    return;
-  }
-  // Right button
+  if (Math.hypot(dL, dyL) < leftBtnR * 1.3) { touchLeft = true; return; }
   const dR = x - rightBtnX, dyR = y - rightBtnY;
-  if (Math.hypot(dR, dyR) < rightBtnR * 1.3) {
-    touchRight = true;
-    return;
-  }
-  // Drag move on left side
-  if (x < W * 0.45) {
-    touchMoving = true;
-    lastTouchX = x;
-    lastTouchY = y;
-  }
+  if (Math.hypot(dR, dyR) < rightBtnR * 1.3) { touchRight = true; return; }
+  if (x < W * 0.45) { touchMoving = true; lastTouchX = x; lastTouchY = y; }
 });
 
 canvas.addEventListener('pointermove', (e) => {
@@ -303,21 +305,14 @@ canvas.addEventListener('pointermove', (e) => {
 
 canvas.addEventListener('pointerup', (e) => {
   e.preventDefault();
-  touchMoving = false;
-  touchLeft = false;
-  touchRight = false;
-  touchFire = false;
+  touchMoving = false; touchLeft = false; touchRight = false; touchFire = false;
 });
 
 canvas.addEventListener('pointercancel', (e) => {
   e.preventDefault();
-  touchMoving = false;
-  touchLeft = false;
-  touchRight = false;
-  touchFire = false;
+  touchMoving = false; touchLeft = false; touchRight = false; touchFire = false;
 });
 
-// Prevent context menu and scrolling
 document.addEventListener('contextmenu', (e) => e.preventDefault());
 document.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
 
@@ -352,13 +347,13 @@ function start() {
   player.vx = 0; player.targetVx = 0; player.thrust = 0;
   player.caught = false; player.caughtTimer = 0;
   enemyBullets = []; particles = []; powerups = []; scorePopups = [];
+  formParticles = [];
   shakeTimer = 0; flashTimer = 0; frameNum = 0;
-  waveClearTimer = 0; waveClearMsg = '';
+  waveClearTimer = 0; waveClearMsg = ''; starRating = 0;
   tractorBeam = null; tractorBeamTimer = 0; tractorBeamAlpha = 0;
   mkForm();
 }
 
-// ===== ENEMY DIVE WITH RETURN (Boss Galaga style) =====
 function startDive(e) {
   e.st = 'dive';
   e.divePhase = 0;
@@ -400,6 +395,7 @@ function update() {
   if (shakeTimer>0) shakeTimer--;
   if (flashTimer>0) flashTimer--;
   if (waveClearTimer>0) waveClearTimer--;
+  enemySpawnTimer--;
   
   // Tractor beam
   if (tractorBeam) {
@@ -410,14 +406,10 @@ function update() {
       playSound('beamBreak');
       tractorBeam = null;
     }
-    // Pull player toward beam target
     if (tractorBeamAlpha > 0.5 && !player.caught) {
       const bx = tractorBeam.x, by = tractorBeam.y;
       const dist = Math.hypot(bx-player.x, by-player.y);
-      if (dist < 22) {
-        player.caught = true;
-        player.caughtTimer = 0;
-      }
+      if (dist < 22) { player.caught = true; player.caughtTimer = 0; }
     }
     if (player.caught) {
       player.caughtTimer++;
@@ -430,7 +422,6 @@ function update() {
         player.y += (dy/dist) * pullStrength;
       }
       if (player.caughtTimer > 150) {
-        // Lost dual fighter
         if (player.dual) {
           player.dual = false;
           playSound('dualLost');
@@ -445,16 +436,16 @@ function update() {
     }
   }
   
-  // Touch button movement
+  // Touch buttons
   if (touchLeft) player.targetVx -= 0.4;
   if (touchRight) player.targetVx += 0.4;
   if (touchFire && player.fireCD <= 0) fire();
   
-  // Keyboard movement
+  // Keyboard
   if (keys['ArrowLeft'] || keys['a']) player.targetVx -= 0.4;
   if (keys['ArrowRight'] || keys['d']) player.targetVx += 0.4;
   
-  // Smooth movement with physics
+  // Physics
   const friction = 0.88;
   player.targetVx *= friction;
   player.targetVx = Math.max(-6, Math.min(6, player.targetVx));
@@ -472,16 +463,16 @@ function update() {
   }
   
   // Formation drift
-  formationX += formationDir * (0.2 + wave*0.03);
+  const driftSpeed = 0.2 + wave * 0.025;
+  formationX += formationDir * driftSpeed;
   if (Math.abs(formationX) > 20) formationDir *= -1;
   
-  // Tractor beam trigger: champion boss fires
+  // Tractor beam trigger
   tractorBeamTimer--;
   const champions = enemies.filter(e => e.on && e.al && e.champion && e.st === 'form');
   if (champions.length > 0 && tractorBeam === null && tractorBeamTimer <= 0) {
     const champ = champions[Math.floor(Math.random()*champions.length)];
     if (champ.dt <= 0) {
-      // Fire tractor beam
       const angle = Math.atan2(player.y - champ.y, player.x - champ.x);
       const beamDist = 250 + Math.random()*100;
       tractorBeam = {
@@ -495,30 +486,24 @@ function update() {
     }
   }
   
-  // Disable champion's normal dive while beam is active
-  // Champions don't dive until beam is done
-  
   // Enemies
   for (const e of enemies) {
     if (!e.on || !e.al) continue;
     e.ft = Math.max(0, e.ft-1);
     
-    // Death animation (spin + shrink before explosion)
     if (e.deathAnim > 0) {
       e.deathAnim--;
-      continue;  // skip all other behavior during death anim
+      continue;
     }
     
     if (e.st === 'form') {
       e.y = e.hy + Math.sin(Date.now()*0.0015+e.ph) * 2;
       
-      // Normal dive (not champion while beam active)
       if (e.dt > 0 && !(e.champion && tractorBeam !== null)) {
         e.dt--;
         if (e.dt <= 0) startDive(e);
       }
       
-      // Galaga-style: rare shots, max 1 per dive
       if (e.sht<=0 && e.scnt<1 && Math.random()<0.0015) {
         e.sht = 100;
         e.scnt++;
@@ -527,14 +512,12 @@ function update() {
       }
     }
     
-    // Dive with return (Boss Galaga style swooping arc)
     if (e.st === 'dive') {
       e.diveTimer++;
       const dx = player.x - e.x;
       const dy = player.y - e.y;
       
       if (e.divePhase === 0) {
-        // Approach: fly toward player's column
         e.x += (e.diveApproachX - e.x) * 0.04;
         e.y += 0.8;
         if (e.diveTimer > 40 || Math.abs(e.x - e.diveApproachX) < 15) {
@@ -542,11 +525,9 @@ function update() {
           e.diveTimer = 0;
         }
       } else if (e.divePhase === 1) {
-        // Dive: arc toward player
         const diveAngle = e.diveAngle || 0;
         e.x += Math.cos(diveAngle) * 1.4;
         e.y += Math.sin(diveAngle) * 1.4;
-        // Curve toward player
         if (dx > 0) e.x += 0.2; else if (dx < 0) e.x -= 0.2;
         
         if (e.y > player.y + 30 || e.y > H + 15) {
@@ -554,7 +535,6 @@ function update() {
           e.diveTimer = 0;
         }
       } else if (e.divePhase === 2) {
-        // Return: curve back to formation
         e.x += (e.diveReturnX - e.x) * 0.03;
         e.y += (e.diveReturnY - e.y) * 0.03;
         
@@ -566,14 +546,12 @@ function update() {
         }
       }
       
-      // Can shoot once during dive
       if (e.scnt < 1 && Math.random() < 0.015) {
         e.scnt++;
         shootAimed(e, e.x);
       }
     }
     
-    // Retreat (fallback for enemies that fell off screen)
     if (e.st === 'retreat') {
       e.x += Math.cos(e.da)*1.5;
       e.y += Math.sin(e.da)*1.5;
@@ -596,7 +574,6 @@ function update() {
     
     if (b.y>H+20 || b.x<-20 || b.x>W+20) { enemyBullets.splice(i,1); continue; }
     
-    // Collision (player hitbox with eVis)
     if (player.inv<=0 && !player.caught) {
       if (b.x>player.x-16 && b.x<player.x+16 && b.y>player.y-14 && b.y<player.y+14) {
         enemyBullets.splice(i,1);
@@ -612,7 +589,7 @@ function update() {
     
     for (const e of enemies) {
       if (!e.on || !e.al) continue;
-      if (e.deathAnim > 0) continue;  // don't hit during death anim
+      if (e.deathAnim > 0) continue;
       const ex = eVis(e);
       if (b.x>ex-14 && b.x<ex+14 && b.y>e.y-12 && b.y<e.y+12) {
         player.bullets.splice(bi,1);
@@ -620,14 +597,13 @@ function update() {
         e.ft = 5;
         
         if (e.hp<=0) {
-          e.deathAnim = 15;  // spin/shrink for 15 frames before explosion
+          e.deathAnim = 18;
           const pts = e.sc*(1+Math.floor(combo/3));
           score += pts;
           combo++;
           comboTimer = 100;
           scorePopups.push({x:ex, y:e.y, text:'+'+pts.toString(), life:50, c:'#ffff00'});
           shakeTimer = 4; shakeIntensity = 3;
-          // Don't play explosion yet — death anim plays first
         } else {
           spawnP(b.x, b.y, '#ffffff', 2);
         }
@@ -636,17 +612,15 @@ function update() {
     }
   }
   
-  // Spawn explosions after death anim completes
+  // Spawn explosions after death anim
   for (const e of enemies) {
     if (e.deathAnim === 1 && e.on && e.al) {
-      // Last frame of death anim — spawn explosion
       const ex = eVis(e);
       e.on=false; e.al=false;
       playSound('explode');
       spawnP(ex, e.y, e.c, 10);
       spawnP(ex, e.y, '#fff', 4);
       
-      // Boss explosions are bigger
       if (e.type==='boss'||e.type==='boss2') {
         shakeTimer = 6; shakeIntensity = 5;
         spawnP(ex, e.y, '#fff', 6);
@@ -655,19 +629,17 @@ function update() {
         }
       }
       
-      // Powerup drop
       if ((e.type==='boss'||e.type==='boss2') && Math.random()<0.35) {
         powerups.push({x:ex, y:e.y, vy:1, t:'dual', life:350, w:20, h:10});
       }
       
-      // Wave clear explosion if this was the last enemy
       if (enemies.filter(en=>en.on&&en.al).length === 0) {
         for (let ii=0;ii<3;ii++) spawnP(ex+(Math.random()-0.5)*100, e.y+(Math.random()-0.5)*40, ['#ff0','#f0f','#0ff'][ii], 5);
       }
     }
   }
   
-  // Enemy collision (player vs enemy body — with eVis)
+  // Enemy collision
   for (const e of enemies) {
     if (!e.on || !e.al || e.deathAnim > 0 || player.inv>0) continue;
     const ex = eVis(e);
@@ -688,7 +660,6 @@ function update() {
     waveClearTimer = 90;
     waveClearMsg = 'WAVE '+wave+' CLEAR';
     playSound('waveClear');
-    // Big celebration burst
     for (let i=0;i<5;i++) {
       const bx = Math.random()*W, by = H*0.3+Math.random()*H*0.3;
       const cols = ['#ff0','#f0f','#0ff','#f80','#fff'];
@@ -719,7 +690,36 @@ function update() {
     if (scorePopups[i].life<=0) scorePopups.splice(i,1);
   }
   
-  // Particles (cap to prevent lag)
+  // Form particles
+  for (let i=formParticles.length-1;i>=0;i--) {
+    const fp = formParticles[i];
+    fp.life--;
+    fp.x += fp.vx;
+    fp.y += fp.vy;
+    fp.vx *= 0.98;
+    fp.vy *= 0.98;
+    if (fp.life<=0) formParticles.splice(i,1);
+  }
+  
+  // Periodically spawn form particles
+  if (frameNum % 60 === 0 && enemies.filter(e=>e.on&&e.al).length > 0) {
+    const aliveEnemies = enemies.filter(e=>e.on&&e.al);
+    const target = aliveEnemies[Math.floor(Math.random()*aliveEnemies.length)];
+    if (target) {
+      const ex = target.x + formationX;
+      formParticles.push({
+        x: ex + (Math.random()-0.5)*10,
+        y: target.y + (Math.random()-0.5)*10,
+        vx: (Math.random()-0.5)*0.5,
+        vy: -0.5 - Math.random()*0.5,
+        life: 20 + Math.random()*10,
+        c: target.type==='boss'?'#ff4444':target.type==='boss2'?'#00ccff':'#ffff00',
+        sz: 0.3 + Math.random()*0.3
+      });
+    }
+  }
+  
+  // Particles (cap)
   const maxParticles = 60;
   for (let i=particles.length-1;i>=0;i--) {
     particles[i].life--;
@@ -730,12 +730,11 @@ function update() {
     particles[i].vy *= 0.96;
     if (particles[i].life<=0) particles.splice(i,1);
   }
-  // Trim excess particles
   if (particles.length > maxParticles) {
     particles.splice(0, particles.length - maxParticles);
   }
   
-  // Stars (only update during play or menu)
+  // Stars
   for (const s of stars) {
     s.y += s.speed;
     if (s.y > H) { s.y = 0; s.x = Math.random()*W; }
@@ -782,7 +781,7 @@ function hitPlayer() {
 }
 
 function spawnP(x, y, c, n) {
-  if (particles.length > 55) return;  // safety cap
+  if (particles.length > 55) return;
   for (let i=0; i<n; i++) {
     const a = Math.random()*Math.PI*2;
     const s = 0.6 + Math.random()*2.8;
@@ -801,7 +800,7 @@ function draw() {
     shakeIntensity *= 0.85;
   }
   
-  // Stars with parallax
+  // Stars
   for (const s of stars) {
     const a = s.alpha * (0.5 + Math.sin(Date.now()*0.001+s.phase)*0.3);
     ctx.globalAlpha = a;
@@ -821,14 +820,10 @@ function draw() {
     ctx.globalAlpha = 1;
   }
   
-  // Buttons
   if (state===STATE.PLAYING) drawButtons();
 }
 
 function drawButtons() {
-  const isPressed = touchLeft || touchRight || touchFire;
-  
-  // Left button
   ctx.save();
   ctx.fillStyle = touchLeft ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.10)';
   ctx.strokeStyle = 'rgba(255,255,255,0.25)';
@@ -843,7 +838,6 @@ function drawButtons() {
   ctx.fillText('<', leftBtnX, leftBtnY);
   ctx.restore();
   
-  // Right button
   ctx.save();
   ctx.fillStyle = touchRight ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.10)';
   ctx.strokeStyle = 'rgba(255,255,255,0.25)';
@@ -858,7 +852,6 @@ function drawButtons() {
   ctx.fillText('>', rightBtnX, rightBtnY);
   ctx.restore();
   
-  // Fire button
   ctx.save();
   ctx.fillStyle = touchFire ? 'rgba(255,80,80,0.25)' : 'rgba(255,255,255,0.12)';
   ctx.strokeStyle = touchFire ? 'rgba(255,100,100,0.5)' : 'rgba(255,255,255,0.35)';
@@ -909,36 +902,59 @@ function drawGame() {
   ctx.textAlign = 'right';
   ctx.fillStyle = '#f44';
   ctx.fillText('LIVES: '+lives, W-10, 20);
+  
+  // Lives display
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#0cf';
+  for (let i=0; i<lives; i++) {
+    const lx = W - 10 - i*16;
+    ctx.beginPath();
+    ctx.moveTo(lx, 32);
+    ctx.lineTo(lx-5, 40);
+    ctx.lineTo(lx+5, 40);
+    ctx.closePath();
+    ctx.fill();
+  }
+  
   ctx.textAlign = 'center';
   ctx.fillStyle = '#aaa';
   ctx.font = '10px monospace';
   ctx.fillText('WAVE '+wave, W/2, 20);
   
+  // Star rating
+  if (wave > 0) {
+    const starsToShow = Math.min(5, Math.floor(wave / 5));
+    ctx.fillStyle = '#ff0';
+    ctx.font = '10px monospace';
+    let starStr = '';
+    for (let i = 0; i < 5; i++) {
+      starStr += i < starsToShow ? '★' : '☆';
+    }
+    ctx.fillText(starStr, W/2, 34);
+  }
+  
   if (combo>1 && comboTimer>0) {
     ctx.fillStyle = '#ff0';
     ctx.font = '10px monospace';
-    ctx.fillText('COMBO x'+(Math.floor(combo/3)+1), W/2, 36);
+    ctx.fillText('COMBO x'+(Math.floor(combo/3)+1), W/2, 48);
   }
   
   // Tractor beam
   if (tractorBeam) {
     ctx.save();
     const tx = tractorBeam.x, ty = tractorBeam.y;
-    // Beam line from boss direction to target
     ctx.strokeStyle = `rgba(255,50,50,${0.3*tractorBeamAlpha})`;
     ctx.lineWidth = 3;
     ctx.beginPath();
     ctx.moveTo(tx - Math.cos(tractorBeam.angle)*200, ty - Math.sin(tractorBeam.angle)*200);
     ctx.lineTo(tx, ty);
     ctx.stroke();
-    // Beam core
     ctx.strokeStyle = `rgba(255,150,150,${0.6*tractorBeamAlpha})`;
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.moveTo(tx - Math.cos(tractorBeam.angle)*200, ty - Math.sin(tractorBeam.angle)*200);
     ctx.lineTo(tx, ty);
     ctx.stroke();
-    // Beam target glow
     ctx.fillStyle = `rgba(255,80,80,${0.4*tractorBeamAlpha})`;
     ctx.beginPath();
     ctx.arc(tx, ty, 8, 0, Math.PI*2);
@@ -993,7 +1009,6 @@ function drawGame() {
     ctx.globalAlpha = 1;
   }
   
-  // Caught indicator (tractor beam pulling)
   if (player.caught) {
     ctx.strokeStyle = 'rgba(255,50,50,0.5)';
     ctx.lineWidth = 1;
@@ -1016,14 +1031,13 @@ function drawGame() {
   for (const e of enemies) {
     if (!e.on || !e.al) continue;
     
-    // Death animation: spin + shrink
     if (e.deathAnim > 0) {
       ctx.save();
       const ex = eVis(e);
       ctx.translate(ex, e.y);
-      const rot = (15 - e.deathAnim) * 0.2;
+      const rot = (18 - e.deathAnim) * 0.15;
       ctx.rotate(rot);
-      const scale = e.deathAnim / 15;
+      const scale = e.deathAnim / 18;
       ctx.scale(scale, scale);
       ctx.fillStyle = e.ft>0?'#fff':'#fff';
       ctx.shadowColor='#fff'; ctx.shadowBlur=8;
@@ -1045,14 +1059,12 @@ function drawGame() {
     ctx.shadowColor=e.ft>0?'#fff':d.c;
     ctx.shadowBlur=e.mhp>1?5:3;
     
-    // Body
     ctx.beginPath();
     ctx.moveTo(0,-e.h/2); ctx.lineTo(-e.w/2,0);
     ctx.lineTo(-e.w/3,e.h/2); ctx.lineTo(e.w/3,e.h/2);
     ctx.lineTo(e.w/2,0);
     ctx.closePath(); ctx.fill();
     
-    // Wings with flap
     ctx.fillStyle = e.ft>0?'#fff':d.a;
     ctx.globalAlpha = 0.75;
     const wf = Math.sin(Date.now()*0.01+e.ph)*3;
@@ -1064,12 +1076,10 @@ function drawGame() {
     ctx.lineTo(e.w/3,e.h/4); ctx.closePath(); ctx.fill();
     ctx.globalAlpha = 1;
     
-    // Eyes
     ctx.fillStyle = '#000'; ctx.shadowBlur=0;
     ctx.beginPath(); ctx.arc(-e.w/5,-1,2,0,Math.PI*2); ctx.fill();
     ctx.beginPath(); ctx.arc(e.w/5,-1,2,0,Math.PI*2); ctx.fill();
     
-    // Champion indicator (tractor beam boss)
     if (e.champion) {
       ctx.fillStyle = '#ff0';
       ctx.font = 'bold 8px monospace';
@@ -1077,7 +1087,6 @@ function drawGame() {
       ctx.fillText('★', 0, -e.h/2 - 4);
     }
     
-    // HP bar for bosses
     if (e.mhp>1 && e.hp<e.mhp) {
       const bw = e.w;
       ctx.fillStyle = '#333';
@@ -1088,6 +1097,16 @@ function drawGame() {
     
     ctx.restore();
   }
+  
+  // Form particles
+  for (const fp of formParticles) {
+    ctx.globalAlpha = fp.life/30;
+    ctx.fillStyle = fp.c;
+    ctx.beginPath();
+    ctx.arc(fp.x, fp.y, fp.sz*(fp.life/25), 0, Math.PI*2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
   
   // Enemy bullets
   for (const b of enemyBullets) {
