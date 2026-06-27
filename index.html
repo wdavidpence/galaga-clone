@@ -419,7 +419,7 @@ function mkForm() {
         ph: Math.random() * Math.PI * 2,
         on: true, al: true,
         sht: 80 + Math.random() * 120,
-        dt: (t === 'boss' || t === 'boss2') ? 300 + Math.random() * 400 : -1,
+        dt: (t === 'boss' || t === 'boss2') ? 250 + Math.random() * 400 : -1,
         dp: 0, da: 0, scnt: 0, ft: 0,
         divePhase: 0, diveTimer: 0,
         diveApproachX: 0,
@@ -707,20 +707,23 @@ function update() {
           e.diveTimer = 0;
         }
       }
-      // Phase 2: Return to formation position
+      // Phase 2: Return to formation - fly directly back to home position
       else if (e.divePhase === 1) {
-        const returnSpeed = 0.025 + wave * 0.003;
+        const returnSpeed = 0.035 + (wave * 0.006);
         e.x += (e.hx - e.x) * returnSpeed;
         e.y += (e.hy - e.y) * returnSpeed;
-        // Check if we've arrived at formation
-        if (Math.abs(e.y - e.hy) < 6 && Math.abs(e.x - e.hx) < 6) {
+        // Check if arrived at home (very generous tolerance)
+        if (Math.hypot(e.x - e.hx, e.y - e.hy) < 20) {
           e.st = 'form';
           e.divePhase = 0;
           e.diveTimer = 0;
           e.attackPattern = 'normal';
           e.scnt = 0;
-          // Set rest delay based on enemy type
-          const restFrames = (e.type === 'boss' || e.type === 'boss2') ? 200 + Math.random() * 150 : 100 + Math.random() * 80;
+          // Snap to exact home position
+          e.x = e.hx;
+          e.y = e.hy;
+          // Set rest delay - varies per enemy (boss 4-7s, regular 2-4s)
+          const restFrames = (e.type === 'boss' || e.type === 'boss2') ? 240 + Math.random() * 180 : 120 + Math.random() * 120;
           e.dt = restFrames;
         }
       }
