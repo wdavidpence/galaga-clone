@@ -388,8 +388,6 @@ function startAttackDive(e, pattern) {
   e.scnt = 0;
   e.attackPattern = pattern;
   e.diveApproachX = player.x + (Math.random() - 0.5) * 100;
-  e.diveReturnX = e.hx;
-  e.diveReturnY = e.hy;
   e.attackFireRate = 0.025 + wave * 0.003; // more aggressive fire
   playSound('dive');
 }
