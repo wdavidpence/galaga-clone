@@ -714,9 +714,12 @@ function update() {
         e.x += Math.cos(e.loopAngle) * loopSpeed;
         e.y += Math.sin(e.loopAngle) * loopSpeed;
         e.loopAngle += 0.015;
-        // When enemy reaches top edge, transition to form
+        // When enemy reaches top area, transition to form
         if (e.y < 30 && e.x > 20 && e.x < W - 20) {
-          e.st = 'form'; e.divePhase = 0; e.diveTimer = 0; e.dt = 100 + Math.random() * 150;
+          e.st = 'form'; e.divePhase = 0; e.diveTimer = 0;
+          // Boss types rest 2.5-5.5s before diving again, regular 1.3-2s
+          const restFrames = (e.type === 'boss' || e.type === 'boss2') ? 150 + Math.random() * 180 : 80 + Math.random() * 100;
+          e.dt = restFrames;
           e.attackPattern = 'normal';
           e.x = e.hx; e.y = e.hy;
         }
