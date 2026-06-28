@@ -1332,7 +1332,7 @@ function drawMenu() {
   ctx.fillStyle = '#ff0'; ctx.font = '13px monospace';
   ctx.fillText('HIGH SCORE: ' + highScore.toString().padStart(8, '0'), W / 2, H * 0.54);
   ctx.fillStyle = '#666'; ctx.font = '11px monospace'; ctx.textAlign = 'right';
-  ctx.fillText('v1.0.9', W - 15, H - 10);
+  ctx.fillText('v1.0.10', W - 15, H - 10);
   for (let i = 0; i < 6; i++) {
     const ex = (W * 0.1) + (mt * 20 + i * 55) % W;
     const ey = H * 0.22 + Math.sin(mt * 1.2 + i * 0.9) * 15;
@@ -1393,8 +1393,9 @@ function drawGame() {
     ctx.save();
     const tx = tractorBeam.x, ty = tractorBeam.y;
     ctx.strokeStyle = 'rgba(255,50,50,' + (0.3 * tractorBeamAlpha) + ')'; ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.moveTo(tx - Math.cos(tractorBeam.angle) * 200, ty - Math.sin(tractorBeam.angle) * 200);
-    ctx.lineTo(tx, ty); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(tx, ty);
+    ctx.lineTo(tx + Math.cos(tractorBeam.angle) * 200, ty + Math.sin(tractorBeam.angle) * 200);
+    ctx.stroke();
     ctx.strokeStyle = 'rgba(255,150,150,' + (0.6 * tractorBeamAlpha) + ')'; ctx.lineWidth = 1.5;
     ctx.beginPath(); ctx.moveTo(tx - Math.cos(tractorBeam.angle) * 200, ty - Math.sin(tractorBeam.angle) * 200);
     ctx.lineTo(tx, ty); ctx.stroke();
