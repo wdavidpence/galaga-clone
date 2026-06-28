@@ -411,7 +411,7 @@ function checkBonusLife() {
   }
 }
 
-// Challenge stages (every 3rd wave, no enemy fire, bonus points)
+// Challenge stages at waves 3, 7, 11, 15, 19...
 let isChallengeWave = false;
 let challengeBonus = 0;
 let challengeClearBonus = 0;
@@ -423,7 +423,7 @@ let attackWaveCount = 0;
 
 // Tractor beam state
 let tractorBeam = null;
-let tractorBeamTimer = 0;
+let tractorBeamTimer = 600;
 let tractorBeamAlpha = 0;
 let tractorBeamDwell = 0; // How long beam has been active (capture attempt)
 
@@ -521,6 +521,20 @@ function mkForm() {
         attackPattern: 'normal', attackFireRate: 0.015
       };
       enemies.push(enemy);
+      
+      // Queue spawn animation entry - 5 groups of 8, loop-de-loop
+      const groupSize = 8;
+      const groupIdx = Math.floor(enemies.length / groupSize);
+      spawnQueue.push({
+        enemy: enemy,
+        delay: spawnTimer + 20 + enemies.length * 2,
+        startSpawn: false,
+        spawnPhase: 'entry',
+        entryX: (groupIdx % 2 === 0) ? -30 : W + 30,
+        entryY: 40 + groupIdx * 30,
+        targetX: sx + c * sp,
+        targetY: 95 + r * sp
+      });
     }
   }
   
@@ -537,7 +551,7 @@ function mkForm() {
   }
   powerups = []; scorePopups = []; formParticles = [];
   tractorBeam = null;
-  tractorBeamTimer = 0; tractorBeamAlpha = 0;
+  tractorBeamTimer = 600; tractorBeamAlpha = 0;
   player.caught = false; player.caughtTimer = 0;
   attackWaveActive = false;
   nextAttackTime = 0;
@@ -677,7 +691,7 @@ function start() {
   formParticles = [];
   shakeTimer = 0; flashTimer = 0; frameNum = 0; gameTime = 0;
   waveClearTimer = 0; waveClearMsg = '';
-  tractorBeam = null; tractorBeamTimer = 0; tractorBeamAlpha = 0;
+  tractorBeam = null; tractorBeamTimer = 600; tractorBeamAlpha = 0;
   attackWaveActive = false; nextAttackTime = 0; attackWaveCount = 0;
   mkForm();
   startMusic();
@@ -1007,6 +1021,8 @@ function update() {
           playSound('dive');
         }
       }
+      if (e.sht > 0) e.sht--;
+      if (e.sht > 0) e.sht--;
       if (e.sht <= 0 && e.scnt < 1 && Math.random() < 0.0015) {
         e.sht = 100; e.scnt++;
         shootAimed(e, eVis(e));
