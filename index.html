@@ -948,7 +948,7 @@ function drawMenu() {
   ctx.fillStyle = '#ff0'; ctx.font = '13px monospace';
   ctx.fillText('HIGH SCORE: ' + highScore.toString().padStart(8, '0'), W / 2, H * 0.54);
   ctx.fillStyle = '#666'; ctx.font = '11px monospace'; ctx.textAlign = 'right';
-  ctx.fillText('v1.0.4', W - 15, H - 10);
+  ctx.fillText('v1.0.6', W - 15, H - 10);
   for (let i = 0; i < 6; i++) {
     const ex = (W * 0.1) + (mt * 20 + i * 55) % W;
     const ey = H * 0.22 + Math.sin(mt * 1.2 + i * 0.9) * 15;
