@@ -426,6 +426,7 @@ let tractorBeam = null;
 let tractorBeamTimer = 600;
 let tractorBeamAlpha = 0;
 let tractorBeamDwell = 0; // How long beam has been active (capture attempt)
+let tractorBeamBoss = null; // The boss that created the beam
 
 // Dual fighter rescue state
 let dualRescueActive = false; // True when player is dual fighter and got captured
@@ -821,7 +822,86 @@ function update() {
   }
   if (nextAttackTime > 0) nextAttackTime--;
 
-  // Tractor beam trigger - Boss stops at 1/3 height, emits cone, then continues
+  // === Tractor beam UPDATE ===
+  if (tractorBeam) {
+    tractorBeam.timer--;
+    tractorBeamAlpha = Math.min(1, tractorBeamAlpha + 0.05);
+    tractorBeamDwell++;
+    
+    // State 1: Beam active (60-180 dwell) - player must dodge
+    if (tractorBeamDwell > 60 && tractorBeamDwell < 180) {
+      // Draw conical beam
+      ctx.save();
+      const beamWidth = 80 + Math.sin(tractorBeamDwell * 0.1) * 20;
+      ctx.fillStyle = 'rgba(100,255,200,' + (0.15 * tractorBeamAlpha) + ')';
+      ctx.strokeStyle = 'rgba(100,255,200,' + (0.5 * tractorBeamAlpha) + ')';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(tractorBeam.x, tractorBeam.y);
+      ctx.lineTo(tractorBeam.x - Math.cos(tractorBeam.angle - 0.3) * 300, tractorBeam.y - Math.sin(tractorBeam.angle - 0.3) * 300);
+      ctx.lineTo(tractorBeam.x - Math.cos(tractorBeam.angle + 0.3) * 300, tractorBeam.y - Math.sin(tractorBeam.angle + 0.3) * 300);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+      ctx.restore();
+      
+      // Capture check
+      const bx = tractorBeam.x, by = tractorBeam.y;
+      if (!player.caught && !dualRescueActive) {
+        const dx = bx - player.x, dy = by - player.y;
+        const dist = Math.hypot(dx, dy);
+        const angle = Math.atan2(dy, dx);
+        const angleDiff = Math.abs(angle - (tractorBeam.angle + Math.PI));
+        if (dist < 100 && angleDiff < 0.5) {
+          player.caught = true;
+          player.caughtTimer = 0;
+          dualRescueActive = false;
+          playSound('beamCapture');
+        }
+      }
+    }
+    
+    // State 2: Beam ends - dual rescue opportunity
+    if (tractorBeamDwell > 180) {
+      if (player.caught) {
+        dualRescueActive = true;
+        player.caught = false;
+        capturedShipX = tractorBeam.x;
+        capturedShipY = tractorBeam.y;
+        rescueTimer = 300;
+      } else {
+        playSound('beamBreak');
+      }
+      tractorBeamDwell = 0;
+    }
+    
+    // State 3: Beam ends completely
+    if (tractorBeam.timer <= 0) {
+      tractorBeamAlpha = 0; tractorBeamDwell = 0;
+      playSound('beamBreak');
+      tractorBeam = null;
+      // Boss continues to next phase with escorts
+      if (tractorBeamBoss) {
+        if (tractorBeamBoss.hp > 0 && tractorBeamBoss.on) {
+          startAttackDive(tractorBeamBoss, 'straight');
+          // Escorts join
+          const escorts = enemies.filter(en => en.on && en.al && en.type !== 'boss' && en.st === 'form');
+          const numEscorts = Math.min(2, escorts.length);
+          for (let i = 0; i < numEscorts; i++) {
+            const esc = escorts[i];
+            esc.st = 'esc';
+            esc.targetBoss = tractorBeamBoss;
+            esc.divePhase = 0;
+            playSound('dive');
+          }
+        } else {
+          tractorBeamBoss = null;
+        }
+      }
+    }
+  }
+
+  // Touch / keyboard movement
   if (touchLeft) player.targetVx -= 0.4;
   if (touchRight) player.targetVx += 0.4;
   if (keys['ArrowLeft'] || keys['a']) player.targetVx -= 0.4;
@@ -870,6 +950,7 @@ function update() {
         alpha: 0,
         angle: Math.atan2(player.y - boss.y, player.x - boss.x)
       };
+      tractorBeamBoss = boss;
       tractorBeamDwell = 0;
     }
   }
