@@ -689,29 +689,29 @@ function update() {
       e.diveTimer++;
       const dx = player.x - e.x, dy = player.y - e.y;
 
-      // Phase 1: Approach player with style
+      // Phase 1: Aggressive dive toward player (crash attempt)
       if (e.divePhase === 0) {
-        const targetX = e.diveApproachX;
-        const targetY = player.y + 40; // Dive PAST player
-        e.x += (targetX - e.x) * 0.05;
-        e.y += 1.2;
-        // Add wave motion based on attack pattern
-        if (e.attackPattern === 'zigzag') e.x += Math.sin(e.diveTimer * 0.12) * 1.8;
-        else if (e.attackPattern === 'spiral') e.x += Math.cos(e.diveTimer * 0.09) * 1.4;
-        else if (e.attackPattern === 'diagonal') e.x += (dx > 0 ? 0.4 : -0.4);
-        // Transition to return phase when close to target
-        if (e.diveTimer > 35 || (Math.abs(e.x - targetX) < 12 && Math.abs(e.y - targetY) < 15)) {
+        const targetX = player.x + (e.diveApproachX - player.x) * 0.4; // Aim near player
+        const targetY = player.y + 5; // Right on top of player
+        e.x += (targetX - e.x) * 0.1; // Very fast approach
+        e.y += 2.2; // Fast descent
+        // Aggressive wave motion during dive
+        if (e.attackPattern === 'zigzag') e.x += Math.sin(e.diveTimer * 0.2) * 2.8;
+        else if (e.attackPattern === 'spiral') e.x += Math.cos(e.diveTimer * 0.14) * 2.2;
+        else if (e.attackPattern === 'diagonal') e.x += (dx > 0 ? 0.8 : -0.8);
+        // Transition to return when very close (crash attempt)
+        if (e.diveTimer > 22 || (Math.hypot(e.x - targetX, e.y - targetY) < 6)) {
           e.divePhase = 1;
           e.diveTimer = 0;
         }
       }
       // Phase 2: Return to formation - fly directly back to home position
       else if (e.divePhase === 1) {
-        const returnSpeed = 0.035 + (wave * 0.006);
+        const returnSpeed = 0.045 + (wave * 0.008); // Faster return
         e.x += (e.hx - e.x) * returnSpeed;
         e.y += (e.hy - e.y) * returnSpeed;
-        // Check if arrived at home (very generous tolerance)
-        if (Math.hypot(e.x - e.hx, e.y - e.hy) < 20) {
+        // Check if arrived at home
+        if (Math.hypot(e.x - e.hx, e.y - e.hy) < 25) {
           e.st = 'form';
           e.divePhase = 0;
           e.diveTimer = 0;
@@ -720,8 +720,8 @@ function update() {
           // Snap to exact home position
           e.x = e.hx;
           e.y = e.hy;
-          // Set rest delay - varies per enemy (boss 4-7s, regular 2-4s)
-          const restFrames = (e.type === 'boss' || e.type === 'boss2') ? 240 + Math.random() * 180 : 120 + Math.random() * 120;
+          // Set rest delay - varies per enemy (boss 2-4s, regular 1-2s)
+          const restFrames = (e.type === 'boss' || e.type === 'boss2') ? 120 + Math.random() * 120 : 60 + Math.random() * 60;
           e.dt = restFrames;
         }
       }
