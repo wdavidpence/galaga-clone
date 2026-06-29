@@ -1344,8 +1344,14 @@ function drawButtons() {
   ctx.fillStyle = touchFire ? 'rgba(255,80,80,0.25)' : 'rgba(255,255,255,0.12)';
   ctx.strokeStyle = touchFire ? 'rgba(255,100,100,0.5)' : 'rgba(255,255,255,0.35)'; ctx.lineWidth = 2;
   ctx.beginPath(); ctx.arc(fireBtnX, fireBtnY, fireBtnR, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-  ctx.fillStyle = touchFire ? 'rgba(255,200,200,0.7)' : 'rgba(255,255,255,0.55)';
-  ctx.font = 'bold 11px monospace'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText('FIRE', fireBtnX, fireBtnY); ctx.restore();
+  ctx.fillStyle = touchFire ? 'rgba(255,200,200,0.85)' : 'rgba(255,255,255,0.75)';
+  ctx.font = isIPhone() ? 'bold 15px monospace' : 'bold 12px monospace';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillText(isIPhone() ? 'FIRE' : 'FIRE', fireBtnX, fireBtnY);
+  if (touchFire) {
+    ctx.strokeStyle = 'rgba(255,150,150,0.6)'; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.arc(fireBtnX, fireBtnY, fireBtnR + 6, 0, Math.PI * 2); ctx.stroke();
+  }
+  ctx.restore();
 }
 
 function drawMenu() {
