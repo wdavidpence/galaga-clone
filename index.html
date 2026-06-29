@@ -1360,6 +1360,8 @@ function drawMenu() {
   ctx.shadowColor = '#ff0000'; ctx.shadowBlur = 25; ctx.fillText('GALAGA', W / 2, H * 0.38);
   ctx.shadowBlur = 0; ctx.font = '17px monospace';
   if (Math.sin(Date.now() * 0.004) > 0) ctx.fillText('TOUCH TO START', W / 2, H * 0.46);
+  ctx.fillStyle = "#888"; ctx.font = "10px monospace";
+  ctx.fillText("iPhone: Tap FIRE first for audio", W / 2, H * 0.505);
   ctx.fillStyle = '#ff0'; ctx.font = '13px monospace';
   ctx.fillText('HIGH SCORE: ' + highScore.toString().padStart(8, '0'), W / 2, H * 0.54);
   ctx.fillStyle = '#666'; ctx.font = '11px monospace'; ctx.textAlign = 'right';
