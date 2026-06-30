@@ -340,11 +340,11 @@ canvas.addEventListener('pointerdown', (e) => {
   if (state === STATE.MENU) { start(); return; }
   if (state === STATE.GAMEOVER) { state = STATE.MENU; return; }
   const dx = x - fireBtnX, dy = y - fireBtnY;
-  if (Math.hypot(dx, dy) < fireBtnR * 1.5) { touchFire = true; fire(); return; }
+  if (Math.hypot(dx, dy) < fireBtnR * 1.5) { touchFire = true; fire(); }
   const dL = x - leftBtnX, dyL = y - leftBtnY;
-  if (Math.hypot(dL, dyL) < leftBtnR * 1.4) { touchLeft = true; return; }
+  if (Math.hypot(dL, dyL) < leftBtnR * 1.4) { touchLeft = true; }
   const dR = x - rightBtnX, dyR = y - rightBtnY;
-  if (Math.hypot(dR, dyR) < rightBtnR * 1.4) { touchRight = true; return; }
+  if (Math.hypot(dR, dyR) < rightBtnR * 1.4) { touchRight = true; }
 });
 
 canvas.addEventListener('pointermove', (e) => {
@@ -853,7 +853,7 @@ function update() {
         if (e.type === 'boss2') { shakeTimer = 8; shakeIntensity = 7; }
       }
       if ((e.type === 'boss' || e.type === 'boss2') && Math.random() < 0.35) {
-        powerups.push({ x: ex, y: e.y, vy: 1, t: 'dual', life: 350, w: 20, h: 10 });
+        powerups.push({ x: ex, y: e.y, vy: 1.2, t: 'dual', life: 600, w: 20, h: 10 });
       }
     }
   }
