@@ -323,9 +323,12 @@ let fireBtnX = 0, fireBtnY = 0, fireBtnR = 55;
 
 function updateBtns() {
   const br = Math.max(26, W * 0.09);
-  leftBtnX = br + 3; leftBtnY = H - br * 4 - 2;
-  rightBtnX = W - br - 3; rightBtnY = H * 0.5;
-  fireBtnX = W - br * 2.5; fireBtnY = br + 15;
+  // Left and right movement buttons side by side at bottom left
+  const gap = br * 0.8;
+  leftBtnX = br + 3; leftBtnY = H - br * 2.5;
+  rightBtnX = leftBtnX + gap + br * 1.6; rightBtnY = H - br * 2.5;
+  // Fire button at bottom right, near left/right buttons
+  fireBtnX = W - br - 3; fireBtnY = H - br * 2.5;
   leftBtnR = rightBtnR = br;
   fireBtnR = Math.max(28, br * 1.05);
 }
@@ -677,11 +680,11 @@ function update() {
           const pattern = patterns[Math.floor(Math.random() * patterns.length)];
           e.st = 'dive'; e.divePhase = 0; e.diveTimer = 0; e.scnt = 0;
           e.diveApproachX = player.x + (Math.random() - 0.5) * 60;
-          e.attackPattern = pattern; e.attackFireRate = 0.015 + wave * 0.002;
+          e.attackPattern = pattern; e.attackFireRate = 0.003 + wave * 0.0004;
           playSound('dive');
         }
       }
-      if (e.sht <= 0 && e.scnt < 1 && Math.random() < 0.002) {
+      if (e.sht <= 0 && e.scnt < 1 && Math.random() < 0.0004) {
         e.sht = 80; e.scnt++;
         shootAimed(e, eVis(e));
       }
