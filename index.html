@@ -13,7 +13,7 @@ html, body {
   position: fixed; top: 0; left: 0;
   font-family: monospace;
 }
-canvas { display: block; width: 100%; height: 100%; }
+canvas { display: block; width: 100%; height: 100%; touch-action: none; image-rendering: pixelated; }
 </style>
 </head>
 <body>
@@ -24,12 +24,21 @@ canvas { display: block; width: 100%; height: 100%; }
 // ===== AUDIO =====
 let audioCtx = null;
 function initAudio() {
-  if (audioCtx) return;
   try {
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;
-    audioCtx = new AC({ latencyHint: 'interactive' });
+    if (!audioCtx) audioCtx = new AC({ latencyHint: 'interactive' });
     if (audioCtx.state === 'suspended') audioCtx.resume().catch(()=>{});
+    if (!audioCtx._primed) {
+      const t = audioCtx.currentTime;
+      const osc = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      g.gain.setValueAtTime(0.0001, t);
+      osc.frequency.setValueAtTime(440, t);
+      osc.connect(g).connect(audioCtx.destination);
+      osc.start(t); osc.stop(t + 0.015);
+      audioCtx._primed = true;
+    }
   } catch(e) {}
 }
 
@@ -102,36 +111,17 @@ function playSound(type) {
       g.gain.exponentialRampToValueAtTime(0.001,t+0.35);
       osc.start(t); osc.stop(t+0.36); break;
     case 'tractorBeam':
-      osc.type='sawtooth';
-      osc.frequency.setValueAtTime(60,t);
-      osc.frequency.linearRampToValueAtTime(90,t+0.1);
-      osc.frequency.linearRampToValueAtTime(55,t+0.2);
-      osc.frequency.linearRampToValueAtTime(85,t+0.3);
-      osc.frequency.linearRampToValueAtTime(65,t+0.4);
-      g.gain.setValueAtTime(0.001,t);
-      g.gain.linearRampToValueAtTime(0.08,t+0.05);
-      g.gain.linearRampToValueAtTime(0.06,t+0.15);
-      g.gain.linearRampToValueAtTime(0.07,t+0.25);
-      g.gain.linearRampToValueAtTime(0.05,t+0.35);
+      osc.type='sawtooth'; osc.frequency.setValueAtTime(80,t);
+      osc.frequency.linearRampToValueAtTime(120,t+0.5);
+      g.gain.exponentialRampToValueAtTime(0.06,t+0.01);
       g.gain.exponentialRampToValueAtTime(0.001,t+0.5);
       osc.start(t); osc.stop(t+0.51); break;
     case 'beamBreak':
-      osc.type='sine';
-      osc.frequency.setValueAtTime(400,t);
-      osc.frequency.exponentialRampToValueAtTime(800,t+0.05);
-      osc.frequency.exponentialRampToValueAtTime(1200,t+0.1);
-      g.gain.setValueAtTime(0.001,t);
-      g.gain.linearRampToValueAtTime(0.12,t+0.02);
-      g.gain.exponentialRampToValueAtTime(0.001,t+0.15);
-      osc.start(t); osc.stop(t+0.16); break;
-    case 'beamCapture':
-      osc.type='sine';
-      osc.frequency.setValueAtTime(300,t);
-      osc.frequency.exponentialRampToValueAtTime(800,t+0.2);
-      g.gain.setValueAtTime(0.001,t);
-      g.gain.linearRampToValueAtTime(0.06,t+0.05);
-      g.gain.exponentialRampToValueAtTime(0.001,t+0.25);
-      osc.start(t); osc.stop(t+0.26); break;
+      osc.type='square'; osc.frequency.setValueAtTime(200,t);
+      osc.frequency.exponentialRampToValueAtTime(800,t+0.1);
+      g.gain.exponentialRampToValueAtTime(0.1,t+0.01);
+      g.gain.exponentialRampToValueAtTime(0.001,t+0.12);
+      osc.start(t); osc.stop(t+0.13); break;
     case 'dualLost':
       osc.type='sawtooth'; osc.frequency.setValueAtTime(600,t);
       osc.frequency.exponentialRampToValueAtTime(100,t+0.3);
@@ -154,7 +144,6 @@ let musicGain = null;
 let musicEnabled = false;
 let musicPlaying = false;
 let musicEvolveTimer = 0;
-let musicIsChallenge = false;
 
 const BASS_CHORDS = [
   [65,82,98], [73,92,110], [82,103,123], [87,110,131],
@@ -165,12 +154,6 @@ const MELODY_SCALE = [
   587,659,698,784,880,988,1047
 ];
 const RHYTHM_SEQ = [1,0,1,1,0,1,1,0, 1,0,1,1,0,1,0,1];
-
-// Challenge wave marching theme
-const CHALLENGE_MARCH = [
-  131,131,147,165,131,147,165,196,
-  175,175,196,220,175,196,220,262
-];
 
 function musicEnsureInit() {
   if (!audioCtx) initAudio();
@@ -277,42 +260,7 @@ function toggleMusic() {
   else stopMusic();
 }
 
-function musicChallengeJingle() {
-  if (!audioCtx) initAudio();
-  if (!audioCtx) return;
-  // Ascending melody to mark this special challenge stage
-  const t = audioCtx.currentTime;
-  const notes = [523, 659, 784, 880, 1047]; // C5, E5, G5, A5, C6
-  notes.forEach((freq, i) => {
-    const osc = audioCtx.createOscillator();
-    const g = audioCtx.createGain();
-    osc.type = 'square';
-    osc.frequency.setValueAtTime(freq, t + i * 0.1);
-    g.gain.setValueAtTime(0.08, t + i * 0.1);
-    g.gain.exponentialRampToValueAtTime(0.001, t + i * 0.1 + 0.15);
-    osc.connect(g); g.connect(audioCtx.destination);
-    osc.start(t + i * 0.1);
-    osc.stop(t + i * 0.1 + 0.16);
-  });
-}
-
 function musicTick() {
-  if (!musicEnabled || !musicPlaying) return;
-  if (state === STATE.CHALLENGE) {
-    // March theme - distinctive, upbeat, 2-beat rhythm
-    musicTick = musicTick || musicEnsureInit();
-    if (!musicGain) musicGain = audioCtx.createGain();
-    musicGain.gain.value = 0.1;
-    musicGain.connect(audioCtx.destination);
-    musicIsChallenge = true;
-    musicEvolveTimer++;
-    if (musicEvolveTimer % 4 !== 0) return;
-    const beat = (musicEvolveTimer / 4) % CHALLENGE_MARCH.length;
-    musicNote(CHALLENGE_MARCH[beat], 0.12, 'square', 0.05);
-    if (beat % 2 === 0) musicDrumKick();
-    if (beat % 2 === 1) musicDrumHH(true);
-    return;
-  }
   if (!musicEnabled || !musicPlaying || state !== STATE.PLAYING) return;
   musicEvolveTimer++;
   // 4-beat pattern: 16 ticks at ~60fps = 1 beat per 4 ticks
@@ -374,6 +322,9 @@ const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 let W, H;
 const dprMax = 2;
+const VERSION = 'v1.0.11';
+function playerLaneY() { return H - Math.max(96, Math.min(126, H * 0.145)); }
+function enemyTopY() { return Math.max(86, H * 0.125); }
 
 function resize() {
   W = window.innerWidth; H = window.innerHeight;
@@ -385,8 +336,8 @@ function resize() {
 window.addEventListener('resize', () => { resize(); updateBtns(); });
 resize();
 
-  // ===== GAME STATE =====
-const STATE = { MENU: 0, PLAYING: 1, GAMEOVER: 2, WAVE_TRANS: 3, CHALLENGE: 4 };
+// ===== GAME STATE =====
+const STATE = { MENU: 0, PLAYING: 1, GAMEOVER: 2, WAVE_TRANS: 3 };
 let state = STATE.MENU;
 let score = 0, highScore = parseInt(localStorage.getItem('galaga_hs') || '0');
 let lives = 3, wave = 0, combo = 0, comboTimer = 0;
@@ -397,25 +348,6 @@ let frameNum = 0;
 let gameTime = 0;
 let waveClearTimer = 0, waveClearMsg = '';
 
-// Bonus lives: 20k, 70k, then every 70k (original Galaga)
-let lastBonusAt = 0;
-function checkBonusLife() {
-  let nextBonus = 20000;
-  if (score >= 70000) nextBonus = 70000 + Math.floor((score - 70000) / 70000) * 70000 + 70000;
-  if (score >= nextBonus && score - lastBonusAt >= 70000) {
-    lives++;
-    lastBonusAt = score;
-    playSound('powerup');
-    scorePopups.push({ x: W / 2, y: H / 2, text: '+1 LIFE', life: 60, c: '#0f0' });
-    spawnP(player.x, player.y, '#0f0', 10);
-  }
-}
-
-// Challenge stages at waves 3, 7, 11, 15, 19...
-let isChallengeWave = false;
-let challengeBonus = 0;
-let challengeClearBonus = 0;
-
 // Attack wave system (Galaga-style coordinated dives after ~20s)
 let attackWaveActive = false;
 let nextAttackTime = 0;
@@ -423,23 +355,8 @@ let attackWaveCount = 0;
 
 // Tractor beam state
 let tractorBeam = null;
-let tractorBeamTimer = 600;
+let tractorBeamTimer = 0;
 let tractorBeamAlpha = 0;
-let tractorBeamDwell = 0; // How long beam has been active (capture attempt)
-let tractorBeamBoss = null; // The boss that created the beam
-
-// Dual fighter rescue state
-let dualRescueActive = false; // True when player is dual fighter and got captured
-let capturedShipX = 0, capturedShipY = 0; // Position of captured ship for rescue display
-let rescueTimer = 0; // Timer during dual fighter rescue sequence
-
-// Bombs (arcade-style screen clear)
-let playerBombs = 2;
-const MAX_BOMBS = 3;
-
-// Enemy entry animations (Galaga-style choreography)
-let spawnQueue = [];
-let spawnTimer = 0;
 
 // Stars
 let starCount = (W > 600) ? 80 : 60;
@@ -469,10 +386,10 @@ let player = {
 // ===== ENEMIES =====
 let enemies = [];
 const ET = {
-  bee:    { c: '#2244ff', a: '#6688ff', hp: 1, sc: 50, w: 22, h: 20 },
-  butter: { c: '#ff2222', a: '#ff8866', hp: 1, sc: 80, w: 26, h: 22 },
-  // Boss HP to 2 with visual changes (was 3)
-  boss:   { c: '#22ff44', a: '#88ff88', hp: 2, sc: 150, w: 42, h: 36 }
+  bee:    { c: '#2468ff', a: '#ffd21c', hp: 1, sc: 50,  w: 22, h: 20 },
+  butter: { c: '#ff2a24', a: '#ffffff', hp: 1, sc: 80,  w: 26, h: 22 },
+  boss:   { c: '#21e84a', a: '#52a7ff', hp: 2, sc: 150, w: 36, h: 30 },
+  boss2:  { c: '#21e84a', a: '#52a7ff', hp: 2, sc: 150, w: 36, h: 30 }
 };
 
 // Dive attack patterns (Galaga-style)
@@ -483,88 +400,56 @@ function startAttackDive(e, pattern) {
   e.scnt = 0;
   e.attackPattern = pattern;
   e.diveApproachX = player.x + (Math.random() - 0.5) * 100;
+  e.diveReturnX = e.hx;
+  e.diveReturnY = e.hy;
   e.attackFireRate = 0.025 + wave * 0.003; // more aggressive fire
   playSound('dive');
 }
 
 function mkForm() {
   enemies = [];
-  const cols = 8, rows = 5;
-  const sp = Math.min(50, W / (cols + 2));
-  const sx = W / 2 - (cols * sp) / 2 + sp / 2;
-  const types = ['boss', 'butter', 'butter', 'bee', 'bee'];
-  let championIdx = -1;
-  // Champion is a bee with star, worth 4x points
-  if (wave >= 2 && Math.random() < 0.6) {
-    championIdx = 3 * cols + Math.floor(Math.random() * cols); // in bee rows
-  } else if (wave >= 4 && Math.random() < 0.3) {
-    championIdx = 4 * cols + Math.floor(Math.random() * cols);
-  }
-  for (let r = 0; r < rows; r++) {
-    for (let c = 0; c < cols; c++) {
-      const t = types[r % 5];
+  const rowsSpec = [
+    { type: 'boss', count: 4, y: enemyTopY(), stagger: 0 },
+    { type: 'butter', count: 8, y: enemyTopY() + 42, stagger: 1 },
+    { type: 'butter', count: 8, y: enemyTopY() + 72, stagger: 2 },
+    { type: 'bee', count: 10, y: enemyTopY() + 108, stagger: 3 },
+    { type: 'bee', count: 10, y: enemyTopY() + 138, stagger: 4 }
+  ];
+  const maxCols = 10;
+  const sp = Math.min(34, (W - 32) / maxCols);
+  let idx = 0;
+  for (const row of rowsSpec) {
+    const sx = W / 2 - ((row.count - 1) * sp) / 2;
+    for (let c = 0; c < row.count; c++) {
+      const t = row.type;
       const d = ET[t];
-      const isChampion = (r === 4 && c === 0) || (championIdx === r * cols + c);
-      const enemy = {
-        x: sx + c * sp, y: 95 + r * sp,
-        hx: sx + c * sp, hy: 95 + r * sp,
+      const isChampion = t === 'boss' && c === 1 && wave > 0;
+      enemies.push({
+        x: sx + c * sp, y: row.y,
+        hx: sx + c * sp, hy: row.y,
         w: d.w, h: d.h, hp: d.hp, mhp: d.hp,
-        sc: d.sc, type: t, st: 'form',
+        sc: d.sc, type: t, c: d.c, a: d.a, st: 'form',
         ph: Math.random() * Math.PI * 2,
-        on: false, al: true,
-        sht: 80 + Math.random() * 120,
-        dt: t === 'boss' ? 250 + Math.random() * 400 : -1,
+        on: true, al: true,
+        sht: 120 + Math.random() * 160,
+        dt: t === 'boss' ? 240 + row.stagger * 45 + Math.random() * 220 : -1,
         dp: 0, da: 0, scnt: 0, ft: 0,
         divePhase: 0, diveTimer: 0,
-        diveApproachX: 0,
+        diveApproachX: 0, diveReturnX: 0, diveReturnY: 0,
         champion: isChampion,
-        deathAnim: 0, spawnDelay: 0, spawnAnim: 0,
-        attackPattern: 'normal', attackFireRate: 0.015
-      };
-      enemies.push(enemy);
-      
-      // Queue spawn animation entry - 5 groups of 8, loop-de-loop
-      const groupSize = 8;
-      const groupIdx = Math.floor(enemies.length / groupSize);
-      spawnQueue.push({
-        enemy: enemy,
-        delay: spawnTimer + 20 + enemies.length * 2,
-        startSpawn: false,
-        spawnPhase: 'entry',
-        entryX: (groupIdx % 2 === 0) ? -30 : W + 30,
-        entryY: 40 + groupIdx * 30,
-        targetX: sx + c * sp,
-        targetY: 95 + r * sp
+        deathAnim: 0, spawnDelay: idx * 3, spawnAnim: 18,
+        attackPattern: 'normal', attackFireRate: 0.012
       });
+      idx++;
     }
-  }
-  
-  // Choreographed enemy entry: 5 groups of 8, loop-de-loop arcs
-  // Each group enters from alternating sides
-  const groupSize = 8;
-  for (const e of enemies) {
-    const gi = e.entryGroup || 0;
-    e.entryDelay = gi * 30;
-    e.entryStartX = (gi % 2 === 0) ? -40 : W + 40;
-    e.entryStartY = 60 + Math.floor(gi / 5) * 40;
-    e.entryLoopPhase = 0;
-    e.entryFireReady = false;
   }
   powerups = []; scorePopups = []; formParticles = [];
   tractorBeam = null;
-  tractorBeamTimer = 600; tractorBeamAlpha = 0;
+  tractorBeamTimer = 420; tractorBeamAlpha = 0;
   player.caught = false; player.caughtTimer = 0;
   attackWaveActive = false;
   nextAttackTime = 0;
   attackWaveCount = 0;
-  // Priority: rightmost boss dives first (original Galaga behavior)
-  const bosses = enemies.filter(e => e.type === 'boss');
-  if (bosses.length >= 2) {
-    bosses.sort((a, b) => b.hx - a.hx); // right to left
-    for (let i = 0; i < Math.min(bosses.length, 2); i++) {
-      bosses[i].dt = Math.min(bosses[i].dt, 100); // dive sooner
-    }
-  }
 }
 
 function eVis(e) { return e.st === 'form' ? e.x + formationX : e.x; }
@@ -578,14 +463,14 @@ let rightBtnX = 0, rightBtnY = 0, rightBtnR = 35;
 let fireBtnX = 0, fireBtnY = 0, fireBtnR = 55;
 
 function updateBtns() {
-  const safeBottom = 30;
+  const safeBottom = Math.max(32, Math.min(48, H * 0.055));
   const bottomY = H - safeBottom;
-  leftBtnX = W * 0.12; leftBtnY = bottomY;
-  rightBtnX = W * 0.32; rightBtnY = bottomY;
-  fireBtnX = W - 70; fireBtnY = bottomY;
-  const br = Math.min(55, W * 0.11);
+  leftBtnX = W * 0.14; leftBtnY = bottomY;
+  rightBtnX = W * 0.34; rightBtnY = bottomY;
+  fireBtnX = W * 0.82; fireBtnY = bottomY;
+  const br = Math.max(34, Math.min(52, W * 0.12));
   leftBtnR = rightBtnR = br;
-  fireBtnR = br * 1.3;
+  fireBtnR = Math.max(48, br * 1.28);
 }
 updateBtns();
 
@@ -595,19 +480,19 @@ canvas.addEventListener('pointerdown', (e) => {
   if (state === STATE.MENU) { start(); return; }
   if (state === STATE.GAMEOVER) { state = STATE.MENU; return; }
   const dx = x - fireBtnX, dy = y - fireBtnY;
-  if (Math.hypot(dx, dy) < fireBtnR * 1.3) { touchFire = true; fire(); }
+  if (x > W * 0.58 || Math.hypot(dx, dy) < fireBtnR * 1.5) { touchFire = true; fire(); return; }
   const dL = x - leftBtnX, dyL = y - leftBtnY;
-  if (Math.hypot(dL, dyL) < leftBtnR * 1.3) { touchLeft = true; return; }
+  if (Math.hypot(dL, dyL) < leftBtnR * 1.35) { touchLeft = true; return; }
   const dR = x - rightBtnX, dyR = y - rightBtnY;
-  if (Math.hypot(dR, dyR) < rightBtnR * 1.3) { touchRight = true; return; }
-  if (x < W * 0.45) { touchMoving = true; lastTouchX = x; lastTouchY = y; }
+  if (Math.hypot(dR, dyR) < rightBtnR * 1.35) { touchRight = true; return; }
+  if (x < W * 0.58) { touchMoving = true; lastTouchX = x; lastTouchY = y; player.targetVx += (x - player.x) * 0.045; }
 });
 
 canvas.addEventListener('pointermove', (e) => {
   e.preventDefault();
   if (touchMoving) {
     const dx = e.clientX - lastTouchX;
-    player.targetVx += dx * 0.15;
+    player.targetVx += dx * 0.32 + (e.clientX - player.x) * 0.018;
     lastTouchX = e.clientX;
     lastTouchY = e.clientY;
   }
@@ -634,19 +519,14 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault();
     if (player.fireCD <= 0) fire();
   }
-  if (e.key === 'b' || e.key === 'B') {
-    e.preventDefault();
-    if (player.fireCD <= 0) useBomb();
-  }
 });
 document.addEventListener('keyup', (e) => { keys[e.key] = false; });
 
 function fire() {
   if (player.fireCD > 0) return;
-  // Hard bullet cap: 2 single, 4 dual (original Galaga behavior)
-  const maxBullets = player.dual ? 4 : 2;
-  if (player.bullets.length >= maxBullets) return;
-  player.fireCD = player.fireRate;
+  const bulletCap = player.dual ? 4 : 2;
+  if (player.bullets.length >= bulletCap) return;
+  player.fireCD = Math.max(12, player.fireRate - 9);
   playSound('shoot');
   if (player.dual) {
     player.bullets.push({ x: player.x - 5, y: player.y - 16, vy: -12, vx: 0, color: '#00ffff' });
@@ -656,35 +536,10 @@ function fire() {
   }
 }
 
-function useBomb() {
-  if (playerBombs <= 0) return;
-  playerBombs--;
-  playSound('superExplosion');
-  // Clear all enemy bullets
-  for (let i = enemyBullets.length - 1; i >= 0; i--) {
-    spawnP(enemyBullets[i].x, enemyBullets[i].y, '#fff', 3);
-    enemyBullets.splice(i, 1);
-  }
-  // Damage all enemies
-  for (const e of enemies) {
-    if (!e.on || !e.al || e.deathAnim > 0) continue;
-    e.hp--;
-    if (e.hp <= 0) {
-      e.deathAnim = 12;
-      const pts = e.sc * (1 + Math.floor(combo / 3));
-      score += pts; combo++; comboTimer = 150;
-      scorePopups.push({ x: eVis(e), y: e.y, text: '+' + pts.toString(), life: 40, c: '#ffff00' });
-    }
-  }
-  shakeTimer = 15; shakeIntensity = 12; flashTimer = 10;
-  // Flash all enemies white
-  for (const e of enemies) { if (e.on && e.al) e.ft = 8; }
-}
-
 function start() {
   state = STATE.PLAYING;
   score = 0; lives = 3; wave = 0; combo = 0; comboTimer = 0;
-  player.x = W / 2; player.y = H - 85;
+  player.x = W / 2; player.y = playerLaneY();
   player.bullets = []; player.fireCD = 0; player.inv = 150; player.dual = false;
   player.vx = 0; player.targetVx = 0; player.thrust = 0;
   player.caught = false; player.caughtTimer = 0;
@@ -692,7 +547,7 @@ function start() {
   formParticles = [];
   shakeTimer = 0; flashTimer = 0; frameNum = 0; gameTime = 0;
   waveClearTimer = 0; waveClearMsg = '';
-  tractorBeam = null; tractorBeamTimer = 600; tractorBeamAlpha = 0;
+  tractorBeam = null; tractorBeamTimer = 0; tractorBeamAlpha = 0;
   attackWaveActive = false; nextAttackTime = 0; attackWaveCount = 0;
   mkForm();
   startMusic();
@@ -720,84 +575,17 @@ function update() {
     if (waveTimer <= 0) { state = STATE.PLAYING; mkForm(); playSound('wave'); }
     return;
   }
-  if (state === STATE.CHALLENGE) {
-    waveTimer--;
-    // During challenge: enemies follow fixed paths, no firing, player can't die
-    for (const e of enemies) {
-      if (!e.on || !e.al) continue;
-      e.diveTimer++;
-      // Fixed looping paths - enemies fly in arcs
-      if (e.divePhase === 0) {
-        // Entry path: enemies fly in from edges
-        e.x += e.da * 0.8;
-        e.y += Math.sin(e.diveTimer * 0.05) * 1.5;
-        if (e.diveTimer > 120) e.divePhase = 1;
-      } else {
-        // Orbit path: enemies loop around screen
-        e.x += Math.cos(e.diveTimer * 0.03) * 1.2;
-        e.y += Math.sin(e.diveTimer * 0.02) * 0.8;
-        if (e.diveTimer > 300) { e.on = false; e.al = false; } // Exit after 5 seconds
-      }
-    }
-    if (waveTimer <= 0) {
-      // Challenge clear bonus
-      const totalKills = enemies.filter(e => !e.on).length;
-      const bonus = 1000 + (wave * 150) + (totalKills * 50);
-      score += bonus;
-      waveClearMsg = 'BONUS +' + bonus.toString().padStart(6, '0');
-      state = STATE.WAVE_TRANS;
-      waveTimer = 90;
-      playSound('waveClear');
-    }
-    return;
-  }
 
   // === PLAYING ===
   player.inv = Math.max(0, player.inv - 1);
   player.fireCD = Math.max(0, player.fireCD - 1);
+  if (touchFire) fire();
   if (comboTimer > 0) { comboTimer--; } else { combo = 0; }
   if (shakeTimer > 0) shakeTimer--;
   if (flashTimer > 0) flashTimer--;
   if (waveClearTimer > 0) waveClearTimer--;
   gameTime++;
   musicTick();
-  // Formation urgency tick: speeds up as enemies die
-  const aliveCount = enemies.filter(e => e.on && e.al).length;
-  if (aliveCount > 0 && aliveCount < 20 && frameNum % Math.max(10, Math.floor(30 - (20 - aliveCount) * 2)) === 0) {
-    const tickFreq = 800 + (20 - aliveCount) * 100;
-    musicNote(tickFreq, 0.05, 'square', 0.02);
-  }
-  spawnTimer++;
-
-  // Process spawn queue (enemy entry animations)
-  for (let i = spawnQueue.length - 1; i >= 0; i--) {
-    const sq = spawnQueue[i];
-    const e = sq.enemy;
-    if (sq.delay <= 0 && !sq.startSpawn) {
-      sq.startSpawn = true;
-      e.x = sq.entryX;
-      e.y = sq.entryY;
-      e.st = 'entry';
-      e.entryProgress = 0;
-      e.entrySpeed = 0.02 + Math.random() * 0.02;
-    }
-    if (sq.startSpawn) {
-      e.entryProgress += e.entrySpeed;
-      const t = Math.min(1, e.entryProgress);
-      // Smooth ease-in-out entry
-      const ease = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
-      e.x = sq.entryX + (sq.targetX - sq.entryX) * ease;
-      e.y = sq.entryY + (sq.targetY - sq.entryY) * ease;
-      e.al = true;
-      e.on = true;
-      if (t >= 1) {
-        e.st = 'form';
-        e.x = e.hx;
-        e.y = e.hy;
-        spawnQueue.splice(i, 1);
-      }
-    }
-  }
 
   // --- ATTACK WAVE SYSTEM ---
   // After ~20 seconds (1200 frames at 60fps), start coordinated attack waves
@@ -807,8 +595,7 @@ function update() {
   }
 
   if (attackWaveActive && nextAttackTime <= 0) {
-    // Send ONLY 1 boss per attack wave (not the whole row!)
-    const waveSize = 1;
+    const waveSize = 1; // one at a time keeps iPhone play fair
     const patterns = ['zigzag', 'spiral', 'diagonal', 'swarm'];
     const pattern = patterns[Math.floor(Math.random() * patterns.length)];
     const formEnemies = enemies.filter(e => e.on && e.al && e.st === 'form' && e.dt <= 0);
@@ -817,86 +604,32 @@ function update() {
       if (e.st === 'form' && e.dt <= 0) startAttackDive(e, pattern);
     }
     attackWaveCount++;
-    nextAttackTime = 450 + Math.random() * 200; // 7.5-10.5 seconds between waves
+    nextAttackTime = 360 + Math.random() * 240; // 6-10 seconds between waves
     shakeTimer = 6; shakeIntensity = 4;
   }
   if (nextAttackTime > 0) nextAttackTime--;
 
-  // === Tractor beam UPDATE ===
+  // Tractor beam
   if (tractorBeam) {
     tractorBeam.timer--;
-    tractorBeamAlpha = Math.min(1, tractorBeamAlpha + 0.05);
-    tractorBeamDwell++;
-    
-    // State 1: Beam active (60-180 dwell) - player must dodge
-    if (tractorBeamDwell > 60 && tractorBeamDwell < 180) {
-      // Draw conical beam
-      ctx.save();
-      const beamWidth = 80 + Math.sin(tractorBeamDwell * 0.1) * 20;
-      ctx.fillStyle = 'rgba(100,255,200,' + (0.15 * tractorBeamAlpha) + ')';
-      ctx.strokeStyle = 'rgba(100,255,200,' + (0.5 * tractorBeamAlpha) + ')';
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.moveTo(tractorBeam.x, tractorBeam.y);
-      ctx.lineTo(tractorBeam.x - Math.cos(tractorBeam.angle - 0.3) * 300, tractorBeam.y - Math.sin(tractorBeam.angle - 0.3) * 300);
-      ctx.lineTo(tractorBeam.x - Math.cos(tractorBeam.angle + 0.3) * 300, tractorBeam.y - Math.sin(tractorBeam.angle + 0.3) * 300);
-      ctx.closePath();
-      ctx.fill();
-      ctx.stroke();
-      ctx.restore();
-      
-      // Capture check
-      const bx = tractorBeam.x, by = tractorBeam.y;
-      if (!player.caught && !dualRescueActive) {
-        const dx = bx - player.x, dy = by - player.y;
-        const dist = Math.hypot(dx, dy);
-        const angle = Math.atan2(dy, dx);
-        const angleDiff = Math.abs(angle - (tractorBeam.angle + Math.PI));
-        if (dist < 100 && angleDiff < 0.5) {
-          player.caught = true;
-          player.caughtTimer = 0;
-          dualRescueActive = false;
-          playSound('beamCapture');
-        }
-      }
-    }
-    
-    // State 2: Beam ends - dual rescue opportunity
-    if (tractorBeamDwell > 180) {
-      if (player.caught) {
-        dualRescueActive = true;
-        player.caught = false;
-        capturedShipX = tractorBeam.x;
-        capturedShipY = tractorBeam.y;
-        rescueTimer = 300;
-      } else {
-        playSound('beamBreak');
-      }
-      tractorBeamDwell = 0;
-    }
-    
-    // State 3: Beam ends completely
+    tractorBeamAlpha = Math.min(1, tractorBeamAlpha + 0.08);
     if (tractorBeam.timer <= 0) {
-      tractorBeamAlpha = 0; tractorBeamDwell = 0;
-      playSound('beamBreak');
-      tractorBeam = null;
-      // Boss continues to next phase with escorts
-      if (tractorBeamBoss) {
-        if (tractorBeamBoss.hp > 0 && tractorBeamBoss.on) {
-          startAttackDive(tractorBeamBoss, 'straight');
-          // Escorts join
-          const escorts = enemies.filter(en => en.on && en.al && en.type !== 'boss' && en.st === 'form');
-          const numEscorts = Math.min(2, escorts.length);
-          for (let i = 0; i < numEscorts; i++) {
-            const esc = escorts[i];
-            esc.st = 'esc';
-            esc.targetBoss = tractorBeamBoss;
-            esc.divePhase = 0;
-            playSound('dive');
-          }
-        } else {
-          tractorBeamBoss = null;
-        }
+      tractorBeamAlpha = 0; playSound('beamBreak'); tractorBeam = null;
+    }
+    if (tractorBeamAlpha > 0.5 && !player.caught) {
+      const bx = tractorBeam.x, by = tractorBeam.y;
+      if (Math.hypot(bx - player.x, by - player.y) < 22) { player.caught = true; player.caughtTimer = 0; }
+    }
+    if (player.caught) {
+      player.caughtTimer++;
+      const bx = tractorBeam.x, by = tractorBeam.y;
+      const dx = bx - player.x, dy = by - player.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist > 5) { player.x += (dx / dist) * 0.35; player.y += (dy / dist) * 0.35; }
+      if (player.caughtTimer > 150) {
+        if (player.dual) { player.dual = false; playSound('dualLost'); spawnP(player.x, player.y, '#ff00ff', 8); shakeTimer = 8; shakeIntensity = 5; }
+        player.caught = false; player.caughtTimer = 0;
+        tractorBeamAlpha = 0; tractorBeam = null;
       }
     }
   }
@@ -908,13 +641,13 @@ function update() {
   if (keys['ArrowRight'] || keys['d']) player.targetVx += 0.4;
 
   // Physics
-  const friction = 0.90;
+  const friction = 0.88;
   player.targetVx *= friction;
   player.targetVx = Math.max(-6, Math.min(6, player.targetVx));
   player.vx += (player.targetVx - player.vx) * 0.25;
   player.x += player.vx;
   player.x = Math.max(player.w / 2, Math.min(W - player.w / 2, player.x));
-  player.y = H - 85;
+  player.y = playerLaneY();
   player.thrust = Math.abs(player.vx) / 5;
 
   // Player bullets
@@ -927,31 +660,21 @@ function update() {
   // Formation drift - Galaga style: reverses at edges with slight bounce
   const driftSpeed = 0.25 + wave * 0.03;
   formationX += formationDir * driftSpeed;
-  const edgeMargin = W * 0.15;
+  const edgeMargin = Math.max(14, W * 0.055);
   if (formationX > edgeMargin) { formationDir = -1; shakeTimer = 3; }
   else if (formationX < -edgeMargin) { formationDir = 1; shakeTimer = 3; }
 
-  // Tractor beam trigger - Boss stops at 1/3 height, emits cone, then continues
+  // Tractor beam trigger
   tractorBeamTimer--;
-  const activeBosses = enemies.filter(e => e.on && e.al && e.type === 'boss' && e.st === 'form');
-  if (activeBosses.length > 0 && tractorBeam === null && tractorBeamTimer <= 0 && gameTime > 300) {
-    const boss = activeBosses[Math.floor(Math.random() * activeBosses.length)];
-    if (boss.dt <= 0) {
-      // Boss stops in formation, then tractor beam activates
-      boss.beamState = 'charging';
-      boss.beamTimer = 60; // 1 second warning
-      tractorBeamTimer = 400 + Math.random() * 200;
+  const champions = enemies.filter(e => e.on && e.al && e.champion && e.st === 'form');
+  if (champions.length > 0 && tractorBeam === null && tractorBeamTimer <= 0) {
+    const champ = champions[Math.floor(Math.random() * champions.length)];
+    if (champ.dt <= 0) {
+      const angle = Math.atan2(player.y - champ.y, player.x - champ.x);
+      const beamDist = 250 + Math.random() * 100;
+      tractorBeam = { x: champ.x + Math.cos(angle) * beamDist, y: champ.y + Math.sin(angle) * beamDist, angle, timer: 80 };
+      tractorBeamTimer = 250 + Math.random() * 200;
       playSound('bossWarn');
-      // Create tractor beam pointing at player
-      tractorBeam = {
-        x: boss.x,
-        y: boss.y,
-        timer: 240,
-        alpha: 0,
-        angle: Math.atan2(player.y - boss.y, player.x - boss.x)
-      };
-      tractorBeamBoss = boss;
-      tractorBeamDwell = 0;
     }
   }
 
@@ -970,11 +693,11 @@ function update() {
           // Normal dive (not in attack wave)
           e.st = 'dive'; e.divePhase = 0; e.diveTimer = 0; e.scnt = 0;
           e.diveApproachX = player.x + (Math.random() - 0.5) * 60;
+          e.diveLoop = true;
           e.attackPattern = 'normal'; e.attackFireRate = 0.015;
           playSound('dive');
         }
       }
-      if (e.sht > 0) e.sht--;
       if (e.sht <= 0 && e.scnt < 1 && Math.random() < 0.0015) {
         e.sht = 100; e.scnt++;
         shootAimed(e, eVis(e));
@@ -985,47 +708,37 @@ function update() {
       e.diveTimer++;
       const dx = player.x - e.x, dy = player.y - e.y;
 
-      // Phase 1: Aggressive dive toward player (crash attempt)
       if (e.divePhase === 0) {
-        const targetX = player.x + (e.diveApproachX - player.x) * 0.4; // Aim near player
-        const targetY = player.y + 5; // Right on top of player
-        e.x += (targetX - e.x) * 0.1; // Very fast approach
-        e.y += 2.2; // Fast descent
-        // Aggressive wave motion during dive
-        if (e.attackPattern === 'zigzag') e.x += Math.sin(e.diveTimer * 0.2) * 2.8;
-        else if (e.attackPattern === 'spiral') e.x += Math.cos(e.diveTimer * 0.14) * 2.2;
-        else if (e.attackPattern === 'diagonal') e.x += (dx > 0 ? 0.8 : -0.8);
-        // Transition to return when very close (crash attempt)
-        if (e.diveTimer > 22 || (Math.hypot(e.x - targetX, e.y - targetY) < 6)) {
-          e.divePhase = 1;
-          e.diveTimer = 0;
-        }
-      }
-      // Phase 2: Return to formation - fly directly back to home position
-      else if (e.divePhase === 1) {
-        const returnSpeed = 0.045 + (wave * 0.008); // Faster return
-        e.x += (e.hx - e.x) * returnSpeed;
-        e.y += (e.hy - e.y) * returnSpeed;
-        // Check if arrived at home
-        if (Math.hypot(e.x - e.hx, e.y - e.hy) < 25) {
-          e.st = 'form';
-          e.divePhase = 0;
-          e.diveTimer = 0;
-          e.attackPattern = 'normal';
-          e.scnt = 0;
-          // Snap to exact home position
-          e.x = e.hx;
-          e.y = e.hy;
-          // Set rest delay - unique per enemy so they don't dive together
-          const restFrames = (e.type === 'boss') ? 120 + Math.random() * 240 : 60 + Math.random() * 60;
+        e.x += (e.diveApproachX - e.x) * 0.04;
+        e.y += 0.8;
+        if (e.attackPattern === 'zigzag') e.x += Math.sin(e.diveTimer * 0.1) * 1.5;
+        else if (e.attackPattern === 'spiral') e.x += Math.cos(e.diveTimer * 0.08) * 1.2;
+        else if (e.attackPattern === 'diagonal') e.x += (dx > 0 ? 0.3 : -0.3);
+        if (e.diveTimer > 40 || Math.abs(e.x - e.diveApproachX) < 15) { e.divePhase = 1; e.diveTimer = 0; }
+      } else if (e.divePhase === 1) {
+        const diveAngle = Math.atan2(dy, dx);
+        e.x += Math.cos(diveAngle) * 1.4;
+        e.y += Math.sin(diveAngle) * 1.4;
+        if (e.attackPattern === 'u-turn') e.x += (e.diveTimer % 60 < 30 ? (dx > 0 ? 0.5 : -0.5) : (dx > 0 ? -0.5 : 0.5));
+        else if (e.attackPattern === 'swarm') { e.x += (dx > 0 ? 0.3 : -0.3); e.y += (dy > 0 ? 0.2 : -0.2); }
+        if (e.y > player.y + 30 || e.y > H + 15) { e.divePhase = 2; e.diveTimer = 0; }
+      } else if (e.divePhase === 2) {
+        const tx = e.hx + formationX;
+        const ty = e.hy;
+        e.x += (tx - e.x) * 0.045;
+        e.y += (ty - e.y) * 0.045;
+        if (Math.hypot(e.x - tx, e.y - ty) < 18 || e.diveTimer > 170) {
+          e.st = 'form'; e.divePhase = 0; e.diveTimer = 0;
+          e.x = e.hx; e.y = e.hy;
+          const restFrames = e.type === 'boss' ? 190 + Math.random() * 260 : 100 + Math.random() * 140;
           e.dt = restFrames;
+          e.attackPattern = 'normal'; e.scnt = 0;
         }
       }
 
-      // Shooting during dive
-      if (e.scnt < 1 && Math.random() < (e.attackPattern !== 'normal' ? e.attackFireRate : 0.012)) {
-        e.scnt++;
-        shootAimed(e, e.x);
+      // Shooting: more aggressive during attack waves
+      if (e.scnt < 1 && Math.random() < (e.attackPattern !== 'normal' ? e.attackFireRate : 0.015)) {
+        e.scnt++; shootAimed(e, e.x);
       }
     }
 
@@ -1060,14 +773,9 @@ function update() {
         e.hp--; e.ft = 5;
         if (e.hp <= 0) {
           e.deathAnim = 18;
-          // Escort multiplier: original Galaga scoring (150/300/600 for boss with 0/1/2 escorts)
-          let escortMult = 1;
-          if (e.type === 'boss') {
-            const escorts = enemies.filter(en => en.on && en.al && en.st !== 'form' && en.st !== 'dive' && en.st !== 'retreat');
-            escortMult = 1 + escorts.length * 2; // 1, 3, 5 multiplier
-          }
-          const pts = e.sc * escortMult * (1 + Math.floor(combo / 3));
-          score += pts; combo++; comboTimer = 150;
+          const diveBonus = e.st === 'dive' ? 2 : 1;
+          const pts = e.sc * diveBonus;
+          score += pts; combo++; comboTimer = 100;
           scorePopups.push({ x: ex, y: e.y, text: '+' + pts.toString(), life: 50, c: '#ffff00' });
           shakeTimer = 4; shakeIntensity = 3;
         } else spawnP(b.x, b.y, '#ffffff', 2);
@@ -1080,17 +788,12 @@ function update() {
   for (const e of enemies) {
     if (e.deathAnim === 1 && e.on && e.al) {
       const ex = eVis(e); e.on = false; e.al = false;
-      playSound('explode'); spawnP(ex, e.y, e.c, 10); spawnP(ex, e.y, '#fff', 4);
-      if (e.type === 'boss') {
+      playSound('explode'); spawnP(ex, e.y, (ET[e.type]||{}).c || e.c || '#ffffff', 10); spawnP(ex, e.y, '#fff', 4);
+      if (e.type === 'boss' || e.type === 'boss2') {
         shakeTimer = 6; shakeIntensity = 5; spawnP(ex, e.y, '#fff', 6);
-        // Boss dive is now a tractor beam standoff
-        if (tractorBeam === null && e.hp <= 0) {
-          dualRescueActive = false;
-          capturedShipX = 0; capturedShipY = 0; rescueTimer = 0;
-        }
-        shakeTimer = 8; shakeIntensity = 7;
+        if (e.type === 'boss2') { shakeTimer = 8; shakeIntensity = 7; }
       }
-      if (e.type === 'boss' && Math.random() < 0.45) {
+      if ((e.type === 'boss' || e.type === 'boss2') && Math.random() < 0.35) {
         powerups.push({ x: ex, y: e.y, vy: 1, t: 'dual', life: 350, w: 20, h: 10 });
       }
       if (enemies.filter(en => en.on && en.al).length === 0) {
@@ -1102,7 +805,6 @@ function update() {
   // Enemy collision
   for (const e of enemies) {
     if (!e.on || !e.al || e.deathAnim > 0 || player.inv > 0) continue;
-    if (state === STATE.CHALLENGE) continue; // Can't die in challenges
     const ex = eVis(e);
     if (Math.hypot(ex - player.x, e.y - player.y) < Math.max(e.w, e.h) / 2 + player.w / 2 - 3) {
       e.on = false; e.al = false; lives--; hitPlayer();
@@ -1114,28 +816,11 @@ function update() {
   if (alive === 0 && enemies.length > 0) {
     wave++;
     // REMOVED: if (wave>25) wave=25; -- waves go on forever
-    
-    // Challenge wave trigger: stages 3, 7, 11, 15, 19, 23...
-    isChallengeWave = (wave > 2 && wave % 4 === 3);
-  
-    if (isChallengeWave) {
-      state = STATE.CHALLENGE;
-      waveTimer = 360; // 6 seconds of challenge
-      playSound('wave');
-      // Challenge jingle: ascending melody to mark this special stage
-      musicChallengeJingle();
-    } else {
-      state = STATE.WAVE_TRANS;
-      waveTimer = 100;
-      waveClearTimer = 90;
-      waveClearMsg = 'WAVE ' + wave + ' CLEAR';
-      // Base wave bonus: 100 * wave number
-      const waveBonus = wave * 150;
-      score += waveBonus;
-      playSound('waveClear');
-      // Show bonus popup
-      scorePopups.push({ x: W / 2, y: H / 2 - 30, text: '+' + waveBonus.toString(), life: 60, c: '#0ff' });
-    }
+    state = STATE.WAVE_TRANS;
+    waveTimer = 100;
+    waveClearTimer = 90;
+    waveClearMsg = 'WAVE ' + wave + ' CLEAR';
+    playSound('waveClear');
     for (let i = 0; i < 5; i++) {
       const bx = Math.random() * W, by = H * 0.3 + Math.random() * H * 0.3;
       const cols = ['#ff0', '#f0f', '#0ff', '#f80', '#fff'];
@@ -1170,7 +855,7 @@ function update() {
   if (frameNum % 60 === 0 && enemies.filter(e => e.on && e.al).length > 0) {
     const aliveE = enemies.filter(e => e.on && e.al);
     const t = aliveE[Math.floor(Math.random() * aliveE.length)];
-    if (t) formParticles.push({ x: t.x + formationX + (Math.random() - 0.5) * 10, y: t.y + (Math.random() - 0.5) * 10, vx: (Math.random() - 0.5) * 0.5, vy: -0.5 - Math.random() * 0.5, life: 20 + Math.random() * 10, c: t.type === 'boss' ? '#ff4444' : t.type === 'butter' ? '#00ccff' : '#ffff00', sz: 0.3 + Math.random() * 0.3 });
+    if (t) formParticles.push({ x: t.x + formationX + (Math.random() - 0.5) * 10, y: t.y + (Math.random() - 0.5) * 10, vx: (Math.random() - 0.5) * 0.5, vy: -0.5 - Math.random() * 0.5, life: 20 + Math.random() * 10, c: t.type === 'boss' ? '#ff4444' : t.type === 'boss2' ? '#00ccff' : '#ffff00', sz: 0.3 + Math.random() * 0.3 });
   }
 
   // Particles (cap)
@@ -1189,22 +874,8 @@ function shootAimed(e, x) {
   const dx = player.x - x, dy = player.y - e.y;
   const dist = Math.hypot(dx, dy);
   if (dist > 0) {
-    const spd = 1.8 + wave * 0.06;
-    // Bosses fire 3-bullet spread
-    if (e.type === 'boss') {
-      for (let i = -1; i <= 1; i++) {
-        const angle = Math.atan2(dy, dx) + i * 0.25;
-        enemyBullets.push({ 
-          x, y: e.y + e.h / 2, 
-          vx: Math.cos(angle) * spd, 
-          vy: Math.sin(angle) * spd, 
-          c: '#ff8800' 
-        });
-      }
-    } else {
-      // Normal aimed shot
-      enemyBullets.push({ x, y: e.y + e.h / 2, vx: (dx / dist) * spd, vy: (dy / dist) * spd, c: e.type === 'boss' ? '#ff8800' : '#ff4444' });
-    }
+    const spd = 2.2 + wave * 0.07;
+    enemyBullets.push({ x, y: e.y + e.h / 2, vx: (dx / dist) * spd, vy: (dy / dist) * spd, c: e.type === 'boss' ? '#ff8800' : '#ff4444' });
   }
 }
 
@@ -1248,56 +919,11 @@ function draw() {
   ctx.globalAlpha = 1;
 
   if (state === STATE.MENU) drawMenu();
-  else if (state === STATE.PLAYING || state === STATE.WAVE_TRANS || state === STATE.CHALLENGE) drawGame();
+  else if (state === STATE.PLAYING || state === STATE.WAVE_TRANS) drawGame();
   else drawOver();
 
   if (flashTimer > 0) { ctx.fillStyle = '#ff0000'; ctx.globalAlpha = Math.min(flashTimer / 7, 0.4); ctx.fillRect(0, 0, W, H); ctx.globalAlpha = 1; }
-  if (state === STATE.PLAYING || state === STATE.CHALLENGE) drawButtons();
-
-  // Challenge wave overlay
-  if (state === STATE.CHALLENGE) {
-    ctx.save();
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 24px monospace';
-    ctx.textAlign = 'center';
-    ctx.shadowColor = '#ff0';
-    ctx.shadowBlur = 10;
-    const pulse = Math.sin(Date.now() * 0.005) * 0.3 + 0.7;
-    ctx.globalAlpha = pulse;
-    ctx.fillText('CHALLENGE STAGE', W / 2, H * 0.25);
-    ctx.globalAlpha = 1;
-    ctx.shadowBlur = 0;
-    ctx.font = '14px monospace';
-    ctx.fillStyle = '#ff0';
-    ctx.fillText('NO ENEMY FIRE • SCORE MULTIPLIER ACTIVE', W / 2, H * 0.29);
-    ctx.restore();
-  }
-
-  // Dual fighter rescue
-  if (dualRescueActive && capturedShipX > 0 && capturedShipY > 0) {
-    ctx.save();
-    ctx.globalAlpha = 0.5 + Math.sin(Date.now() * 0.01) * 0.2;
-    ctx.translate(capturedShipX, capturedShipY);
-    ctx.fillStyle = '#f00';
-    ctx.shadowColor = '#f00';
-    ctx.shadowBlur = 8;
-    // Draw captured ship as red ghost
-    ctx.beginPath();
-    ctx.moveTo(0, -10); ctx.lineTo(-8, 3); ctx.lineTo(-4, 12);
-    ctx.lineTo(4, 12); ctx.lineTo(8, 3); ctx.closePath();
-    ctx.fill();
-    ctx.restore();
-    // Show rescue timer
-    ctx.save();
-    ctx.fillStyle = '#f00';
-    ctx.font = 'bold 12px monospace';
-    ctx.textAlign = 'center';
-    ctx.shadowColor = '#f00';
-    ctx.shadowBlur = 5;
-    const rescueSec = Math.ceil(rescueTimer / 60);
-    ctx.fillText('RESCUE: ' + rescueSec + 's', W / 2, H * 0.18);
-    ctx.restore();
-  }
+  if (state === STATE.PLAYING) drawButtons();
 }
 
 function drawButtons() {
@@ -1329,10 +955,11 @@ function drawMenu() {
   ctx.shadowColor = '#ff0000'; ctx.shadowBlur = 25; ctx.fillText('GALAGA', W / 2, H * 0.38);
   ctx.shadowBlur = 0; ctx.font = '17px monospace';
   if (Math.sin(Date.now() * 0.004) > 0) ctx.fillText('TOUCH TO START', W / 2, H * 0.46);
+  ctx.fillStyle = '#7cf'; ctx.font = '12px monospace'; ctx.fillText('LEFT SIDE STEERS  •  RIGHT SIDE FIRES', W / 2, H * 0.50);
   ctx.fillStyle = '#ff0'; ctx.font = '13px monospace';
   ctx.fillText('HIGH SCORE: ' + highScore.toString().padStart(8, '0'), W / 2, H * 0.54);
   ctx.fillStyle = '#666'; ctx.font = '11px monospace'; ctx.textAlign = 'right';
-  ctx.fillText('v1.0.10', W - 15, H - 10);
+  ctx.fillText(VERSION + ' restored playable', W - 15, H - 10);
   for (let i = 0; i < 6; i++) {
     const ex = (W * 0.1) + (mt * 20 + i * 55) % W;
     const ey = H * 0.22 + Math.sin(mt * 1.2 + i * 0.9) * 15;
@@ -1348,15 +975,6 @@ function drawGame() {
   ctx.fillStyle = '#fff'; ctx.font = 'bold 12px monospace'; ctx.textAlign = 'left';
   ctx.fillText('SCORE: ' + score.toString().padStart(8, '0'), 10, 20);
   ctx.textAlign = 'right'; ctx.fillStyle = '#f44'; ctx.fillText('LIVES: ' + lives, W - 10, 20);
-
-  // Bomb indicator
-  ctx.textAlign = 'right'; ctx.fillStyle = '#f80';
-  ctx.fillText('BOMBS: ' + playerBombs, W - 10, 36);
-  if (playerBombs > 0 && frameNum % 30 < 15) {
-    ctx.fillStyle = '#ff0';
-    ctx.font = '9px monospace';
-    ctx.fillText('PRESS B', W - 10, 50);
-  }
 
   // Lives as ship icons
   ctx.textAlign = 'right'; ctx.fillStyle = '#0cf';
@@ -1393,9 +1011,8 @@ function drawGame() {
     ctx.save();
     const tx = tractorBeam.x, ty = tractorBeam.y;
     ctx.strokeStyle = 'rgba(255,50,50,' + (0.3 * tractorBeamAlpha) + ')'; ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.moveTo(tx, ty);
-    ctx.lineTo(tx + Math.cos(tractorBeam.angle) * 200, ty + Math.sin(tractorBeam.angle) * 200);
-    ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(tx - Math.cos(tractorBeam.angle) * 200, ty - Math.sin(tractorBeam.angle) * 200);
+    ctx.lineTo(tx, ty); ctx.stroke();
     ctx.strokeStyle = 'rgba(255,150,150,' + (0.6 * tractorBeamAlpha) + ')'; ctx.lineWidth = 1.5;
     ctx.beginPath(); ctx.moveTo(tx - Math.cos(tractorBeam.angle) * 200, ty - Math.sin(tractorBeam.angle) * 200);
     ctx.lineTo(tx, ty); ctx.stroke();
@@ -1404,90 +1021,30 @@ function drawGame() {
     ctx.restore();
   }
 
-  // Player ship
+  // Player ship - white/red/blue Galaga-style fighter, sized for phone portrait.
   ctx.save(); ctx.translate(player.x, player.y);
   if (player.inv > 0 && Math.floor(player.inv / 4) % 2 === 0) ctx.globalAlpha = 0.35;
-
-  const ts = 3 + Math.sin(Date.now() * 0.02) * 2 + player.thrust * 4;
-  ctx.fillStyle = '#f60'; ctx.globalAlpha = 0.6 + player.thrust * 0.3;
-  ctx.beginPath(); ctx.moveTo(-5, 11); ctx.lineTo(0, 20 + ts); ctx.lineTo(5, 11); ctx.closePath(); ctx.fill();
-  ctx.fillStyle = '#ff0'; ctx.beginPath(); ctx.moveTo(-3, 11); ctx.lineTo(0, 16 + ts); ctx.lineTo(3, 11); ctx.closePath(); ctx.fill();
-  ctx.globalAlpha = 1;
-
-  // Original Galaga colors: white body, red accents, blue/grey cockpit
-  // Red wing accents
-  ctx.fillStyle = '#cc0000';
-  ctx.beginPath(); ctx.moveTo(-9, 3); ctx.lineTo(-14, 15); ctx.lineTo(-4, 11); ctx.closePath(); ctx.fill();
-  ctx.beginPath(); ctx.moveTo(9, 3); ctx.lineTo(14, 15); ctx.lineTo(4, 11); ctx.closePath(); ctx.fill();
-
-  // Red wing tips
-  ctx.fillStyle = '#ff2222';
-  ctx.beginPath(); ctx.moveTo(-14, 15); ctx.lineTo(-16, 12); ctx.lineTo(-12, 11); ctx.closePath(); ctx.fill();
-  ctx.beginPath(); ctx.moveTo(14, 15); ctx.lineTo(16, 12); ctx.lineTo(12, 11); ctx.closePath(); ctx.fill();
-
-  // White main body
-  ctx.fillStyle = '#eeeeee';
-  ctx.beginPath(); ctx.moveTo(0, -15); ctx.lineTo(-9, 4); ctx.lineTo(-4, 13);
-  ctx.lineTo(4, 13); ctx.lineTo(9, 4); ctx.closePath(); ctx.fill();
-
-  // Blue/grey cockpit
-  ctx.fillStyle = player.inv > 0 ? '#8899aa' : '#446688';
-  ctx.beginPath(); ctx.moveTo(0, -8); ctx.lineTo(-4, 3); ctx.lineTo(4, 3); ctx.closePath(); ctx.fill();
-
-  // Cockpit highlight
-  ctx.fillStyle = '#aabbcc';
-  ctx.beginPath(); ctx.arc(0, -4, 2, 0, Math.PI * 2); ctx.fill();
-
+  const ts = 3 + Math.sin(Date.now() * 0.02) * 2 + player.thrust * 3;
+  ctx.fillStyle = '#ff6b00'; ctx.globalAlpha *= 0.75;
+  ctx.beginPath(); ctx.moveTo(-4, 12); ctx.lineTo(0, 19 + ts); ctx.lineTo(4, 12); ctx.closePath(); ctx.fill();
+  ctx.globalAlpha = player.inv > 0 && Math.floor(player.inv / 4) % 2 === 0 ? 0.35 : 1;
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath(); ctx.moveTo(0, -16); ctx.lineTo(-7, 5); ctx.lineTo(-14, 15); ctx.lineTo(-4, 11); ctx.lineTo(0, 16); ctx.lineTo(4, 11); ctx.lineTo(14, 15); ctx.lineTo(7, 5); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#e21b2d'; ctx.fillRect(-3, -7, 6, 19);
+  ctx.fillStyle = '#1d56ff';
+  ctx.beginPath(); ctx.moveTo(-11, 8); ctx.lineTo(-17, 16); ctx.lineTo(-6, 13); ctx.closePath(); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(11, 8); ctx.lineTo(17, 16); ctx.lineTo(6, 13); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = '#74d7ff'; ctx.shadowColor = '#74d7ff'; ctx.shadowBlur = 5;
+  ctx.beginPath(); ctx.arc(0, -3, 3, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0;
   if (player.dual) {
-    // Dual fighter: two ships side by side with merge animation
-    const mergeFlash = dualRescueActive ? 0.5 + Math.sin(Date.now() * 0.01) * 0.3 : 0.7;
-    ctx.fillStyle = '#eeeeee'; ctx.globalAlpha = mergeFlash;
-    // Left ship
-    ctx.beginPath(); ctx.moveTo(-13, 1); ctx.lineTo(-17, 12); ctx.lineTo(-9, 9); ctx.closePath(); ctx.fill();
-    // Right ship
-    ctx.beginPath(); ctx.moveTo(13, 1); ctx.lineTo(17, 12); ctx.lineTo(9, 9); ctx.closePath(); ctx.fill();
+    ctx.globalAlpha = 0.9;
+    for (const off of [-18, 18]) {
+      ctx.fillStyle = '#ffffff'; ctx.beginPath(); ctx.moveTo(off, -10); ctx.lineTo(off - 7, 10); ctx.lineTo(off, 15); ctx.lineTo(off + 7, 10); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = '#e21b2d'; ctx.fillRect(off - 2, -3, 4, 13);
+    }
     ctx.globalAlpha = 1;
-    // Merge beam: glowing connection between ships
-    if (dualRescueActive) {
-      ctx.strokeStyle = `rgba(0,255,255,${0.4 + Math.sin(Date.now() * 0.015) * 0.2})`;
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(-10, 0);
-      ctx.lineTo(10, 0);
-      ctx.stroke();
-      // Pulse effect
-      ctx.strokeStyle = `rgba(255,255,255,${0.2 + Math.sin(Date.now() * 0.02) * 0.1})`;
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(-8, -2);
-      ctx.lineTo(8, -2);
-      ctx.moveTo(-8, 2);
-      ctx.lineTo(8, 2);
-      ctx.stroke();
-    }
   }
-  // Captured ship fires back at player (original Galaga mechanic)
-  for (const e of enemies) {
-    if (e.caughtShip && e.caughtShipTimer > 0) {
-      e.caughtShipTimer--;
-      if (e.caughtShipTimer <= 0) {
-        // Fire at player
-        const dx = player.x - eVis(e);
-        const dy = player.y - e.y;
-        const dist = Math.hypot(dx, dy);
-        if (dist > 0) {
-          const spd = 2.5 + wave * 0.05;
-          enemyBullets.push({ x: eVis(e), y: e.y, vx: (dx / dist) * spd, vy: (dy / dist) * spd, c: '#ff4444' });
-        }
-        e.caughtShip = false;
-      }
-    }
-  }
-  if (player.caught) { ctx.strokeStyle = 'rgba(255,50,50,0.5)'; ctx.lineWidth = 1; ctx.beginPath(); ctx.arc(0, 0, 18, 0, Math.PI * 2); ctx.stroke(); }
-  if (player.dual && player.caught) {
-    ctx.strokeStyle = 'rgba(255,0,0,0.3)'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.arc(0, 0, 22, 0, Math.PI * 2); ctx.stroke();
-  }
+  if (player.caught) { ctx.strokeStyle = 'rgba(255,240,80,0.65)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(0, 0, 19, 0, Math.PI * 2); ctx.stroke(); }
   ctx.restore();
 
   // Player bullets
@@ -1500,105 +1057,43 @@ function drawGame() {
   // Enemies
   for (const e of enemies) {
     if (!e.on || !e.al) continue;
-
+    const ex = eVis(e);
+    const d = ET[e.type] || ET.bee;
     if (e.deathAnim > 0) {
-      ctx.save(); ctx.translate(eVis(e), e.y);
-      const rot = (18 - e.deathAnim) * 0.15;
-      ctx.rotate(rot); ctx.scale(e.deathAnim / 18, e.deathAnim / 18);
+      ctx.save(); ctx.translate(ex, e.y);
+      const k = e.deathAnim / 18;
+      ctx.rotate((18 - e.deathAnim) * 0.18);
       ctx.fillStyle = '#fff'; ctx.shadowColor = '#fff'; ctx.shadowBlur = 8;
-      ctx.beginPath(); ctx.moveTo(0, -e.h / 2); ctx.lineTo(-e.w / 2, 0);
-      ctx.lineTo(-e.w / 3, e.h / 2); ctx.lineTo(e.w / 3, e.h / 2); ctx.lineTo(e.w / 2, 0);
-      ctx.closePath(); ctx.fill(); ctx.restore();
-      continue;
+      ctx.globalAlpha = Math.max(0.15, k);
+      ctx.beginPath(); ctx.moveTo(0, -e.h * k); ctx.lineTo(-e.w * 0.55 * k, 0); ctx.lineTo(0, e.h * 0.45 * k); ctx.lineTo(e.w * 0.55 * k, 0); ctx.closePath(); ctx.fill();
+      ctx.restore(); continue;
     }
-
-    if (e.st === 'entry') {
-      ctx.save(); ctx.translate(e.x, e.y);
-      const scale = 0.5 + (e.entryProgress * 0.5);
-      ctx.scale(scale, scale);
-      ctx.globalAlpha = 0.3 + e.entryProgress * 0.7;
-      ctx.fillStyle = e.ft > 0 ? '#fff' : d.c;
-      ctx.shadowColor = e.ft > 0 ? '#fff' : d.c;
-      ctx.shadowBlur = 3;
-      ctx.beginPath(); ctx.moveTo(0, -e.h / 2); ctx.lineTo(-e.w / 2, 0);
-      ctx.lineTo(-e.w / 3, e.h / 2); ctx.lineTo(e.w / 3, e.h / 2); ctx.lineTo(e.w / 2, 0);
-      ctx.closePath(); ctx.fill();
-      ctx.globalAlpha = 1; ctx.restore();
-      continue;
-    }
-
-    ctx.save(); ctx.translate(eVis(e), e.y);
-    const d = ET[e.type];
-    ctx.fillStyle = e.ft > 0 ? '#fff' : d.c;
-    ctx.shadowColor = e.ft > 0 ? '#fff' : d.c;
-    ctx.shadowBlur = e.mhp > 1 ? 5 : 3;
-
-    // Body shape - all enemies use same base shape, different colors
-    ctx.beginPath(); ctx.moveTo(0, -e.h / 2); ctx.lineTo(-e.w / 2, 0);
-    ctx.lineTo(-e.w / 3, e.h / 2); ctx.lineTo(e.w / 3, e.h / 2); ctx.lineTo(e.w / 2, 0);
-    ctx.closePath(); ctx.fill();
-
-    // Wing animation (bees & butterflies)
-    if (e.type === 'bee' || e.type === 'butter') {
-      ctx.fillStyle = e.ft > 0 ? '#fff' : d.a; ctx.globalAlpha = 0.75;
-      const wf = Math.sin(Date.now() * 0.015 + e.ph) * 4; // Faster wing flap
-      ctx.beginPath(); ctx.moveTo(-e.w / 3, -1); ctx.lineTo(-e.w / 2 - 2 + wf, e.h / 3); ctx.lineTo(-e.w / 3, e.h / 4); ctx.closePath(); ctx.fill();
-      ctx.beginPath(); ctx.moveTo(e.w / 3, -1); ctx.lineTo(e.w / 2 + 2 - wf, e.h / 3); ctx.lineTo(e.w / 3, e.h / 4); ctx.closePath(); ctx.fill();
-      ctx.globalAlpha = 1;
-    } else {
-      // Boss wings - larger, more ornate
-      ctx.fillStyle = e.ft > 0 ? '#fff' : d.a; ctx.globalAlpha = 0.6;
-      ctx.beginPath(); ctx.moveTo(-e.w / 2, 0); ctx.lineTo(-e.w / 2 - 4, e.h / 4); ctx.lineTo(-e.w / 3, e.h / 2); ctx.closePath(); ctx.fill();
-      ctx.beginPath(); ctx.moveTo(e.w / 2, 0); ctx.lineTo(e.w / 2 + 4, e.h / 4); ctx.lineTo(e.w / 3, e.h / 2); ctx.closePath(); ctx.fill();
-      ctx.globalAlpha = 1;
-    }
-
-    // Eyes - distinctive per type
-    if (e.type === 'bee') {
-      ctx.fillStyle = '#000'; ctx.shadowBlur = 0;
-      ctx.beginPath(); ctx.arc(-e.w / 6, -2, 2.5, 0, Math.PI * 2); ctx.fill();
-      ctx.beginPath(); ctx.arc(e.w / 6, -2, 2.5, 0, Math.PI * 2); ctx.fill();
-      // Antennae
-      ctx.strokeStyle = '#000'; ctx.lineWidth = 1;
-      ctx.beginPath(); ctx.moveTo(-e.w / 6, -e.h / 2); ctx.lineTo(-e.w / 4, -e.h / 2 - 3); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(e.w / 6, -e.h / 2); ctx.lineTo(e.w / 4, -e.h / 2 - 3); ctx.stroke();
+    ctx.save(); ctx.translate(ex, e.y);
+    const flash = e.ft > 0;
+    if (e.type === 'boss') {
+      ctx.fillStyle = flash ? '#fff' : (e.hp < e.mhp ? '#2678ff' : d.c); ctx.shadowColor = ctx.fillStyle; ctx.shadowBlur = 5;
+      ctx.beginPath(); ctx.moveTo(0, -16); ctx.lineTo(-18, -5); ctx.lineTo(-15, 10); ctx.lineTo(-6, 15); ctx.lineTo(0, 8); ctx.lineTo(6, 15); ctx.lineTo(15, 10); ctx.lineTo(18, -5); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = flash ? '#fff' : '#ffd21c'; ctx.beginPath(); ctx.arc(-7, -2, 3, 0, Math.PI * 2); ctx.arc(7, -2, 3, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#ff3030'; ctx.fillRect(-4, -11, 8, 5);
     } else if (e.type === 'butter') {
-      ctx.fillStyle = '#000'; ctx.shadowBlur = 0;
-      ctx.beginPath(); ctx.arc(-e.w / 5, -2, 2.5, 0, Math.PI * 2); ctx.fill();
-      ctx.beginPath(); ctx.arc(e.w / 5, -2, 2.5, 0, Math.PI * 2); ctx.fill();
-      // Wing spots
-      ctx.fillStyle = e.ft > 0 ? '#fff' : '#fff'; ctx.globalAlpha = 0.3;
-      ctx.beginPath(); ctx.arc(-e.w / 4, 2, 2, 0, Math.PI * 2); ctx.fill();
-      ctx.beginPath(); ctx.arc(e.w / 4, 2, 2, 0, Math.PI * 2); ctx.fill();
-      ctx.globalAlpha = 1;
+      ctx.fillStyle = flash ? '#fff' : d.c; ctx.shadowColor = ctx.fillStyle; ctx.shadowBlur = 4;
+      ctx.beginPath(); ctx.moveTo(0, -12); ctx.lineTo(-15, 0); ctx.lineTo(-18, 12); ctx.lineTo(-4, 7); ctx.lineTo(0, 13); ctx.lineTo(4, 7); ctx.lineTo(18, 12); ctx.lineTo(15, 0); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = flash ? '#fff' : d.a; ctx.globalAlpha = 0.85;
+      ctx.beginPath(); ctx.moveTo(-5, -3); ctx.lineTo(-12, 5); ctx.lineTo(-6, 5); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(5, -3); ctx.lineTo(12, 5); ctx.lineTo(6, 5); ctx.closePath(); ctx.fill(); ctx.globalAlpha = 1;
     } else {
-      // Boss eyes - glowing, menacing
-      ctx.fillStyle = e.ft > 0 ? '#fff' : (e.hp < e.mhp ? '#ff0' : '#f00');
-      ctx.shadowColor = ctx.fillStyle; ctx.shadowBlur = 4;
-      ctx.beginPath(); ctx.arc(-e.w / 5, -2, 3, 0, Math.PI * 2); ctx.fill();
-      ctx.beginPath(); ctx.arc(e.w / 5, -2, 3, 0, Math.PI * 2); ctx.fill();
-      ctx.shadowBlur = 0;
+      ctx.fillStyle = flash ? '#fff' : d.c; ctx.shadowColor = ctx.fillStyle; ctx.shadowBlur = 4;
+      ctx.beginPath(); ctx.moveTo(0, -11); ctx.lineTo(-12, -1); ctx.lineTo(-10, 12); ctx.lineTo(-3, 7); ctx.lineTo(0, 13); ctx.lineTo(3, 7); ctx.lineTo(10, 12); ctx.lineTo(12, -1); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = flash ? '#fff' : d.a; ctx.beginPath(); ctx.arc(-6, 1, 3, 0, Math.PI * 2); ctx.arc(6, 1, 3, 0, Math.PI * 2); ctx.fill();
     }
-
-    // Champion star (for Galaga-style champion enemies)
-    if (e.champion) { ctx.fillStyle = '#ff0'; ctx.font = 'bold 10px monospace'; ctx.textAlign = 'center'; ctx.fillText('★', 0, -e.h / 2 - 5); }
-
-    // Attack wave preview: flash '!' for enemies about to dive
+    ctx.fillStyle = '#000'; ctx.shadowBlur = 0;
+    ctx.beginPath(); ctx.arc(-e.w / 6, -1, 1.7, 0, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.arc(e.w / 6, -1, 1.7, 0, Math.PI * 2); ctx.fill();
+    if (e.champion) { ctx.fillStyle = '#ff0'; ctx.font = 'bold 8px monospace'; ctx.textAlign = 'center'; ctx.fillText('★', 0, -e.h / 2 - 4); }
     if (attackWaveActive && e.dt > 0 && e.dt <= 30 && e.st === 'form') {
       if (Math.sin(Date.now() * 0.02) > 0) { ctx.fillStyle = '#f00'; ctx.font = 'bold 10px monospace'; ctx.textAlign = 'center'; ctx.fillText('!', 0, -e.h / 2 - 8); }
     }
-
-    // Tractor beam target indicator for bosses
-    if (tractorBeam && e.champion && e.st === 'form' && e.type === 'boss') {
-      ctx.strokeStyle = 'rgba(255,100,100,0.6)'; ctx.lineWidth = 1.5;
-      ctx.beginPath(); ctx.arc(0, 0, e.w / 2 + 3, 0, Math.PI * 2); ctx.stroke();
-    }
-
     if (e.mhp > 1 && e.hp < e.mhp) {
-      const bw = e.w; ctx.fillStyle = '#333'; ctx.fillRect(-bw / 2, e.h / 2 + 2, bw, 2);
-      const hpPct = e.hp / e.mhp;
-      ctx.fillStyle = hpPct > 0.66 ? '#0f0' : (hpPct > 0.33 ? '#ff0' : '#f00');
-      ctx.fillRect(-bw / 2, e.h / 2 + 2, bw * hpPct, 2);
+      const bw = e.w; ctx.fillStyle = '#333'; ctx.fillRect(-bw / 2, e.h / 2 + 2, bw, 2); ctx.fillStyle = e.hp > e.mhp * 0.5 ? '#0f0' : '#f00'; ctx.fillRect(-bw / 2, e.h / 2 + 2, bw * (e.hp / e.mhp), 2);
     }
     ctx.restore();
   }
@@ -1658,46 +1153,19 @@ function drawGame() {
     ctx.globalAlpha = fadeIn; ctx.fillStyle = '#ff0'; ctx.font = 'bold 28px monospace'; ctx.textAlign = 'center';
     ctx.shadowColor = '#ff0'; ctx.shadowBlur = 15; ctx.fillText(waveClearMsg, W / 2, H * 0.3);
     ctx.shadowBlur = 0; ctx.fillStyle = '#fff'; ctx.font = '13px monospace';
-    ctx.globalAlpha = fadeIn * 0.7; ctx.fillText('Great job!', W / 2, H * 0.35);
-    if (combo > 1 && comboTimer > 0) {
-      ctx.fillStyle = '#0ff';
-      ctx.font = 'bold 14px monospace';
-      ctx.fillText('COMBO x' + (Math.floor(combo / 3) + 1), W / 2, H * 0.38);
-    }
-    // Bonus life indicator when approaching 20k
-    if (score >= 19000 && score < 20000 && comboTimer > 0) {
-      ctx.fillStyle = '#0f0';
-      ctx.font = 'bold 16px monospace';
-      ctx.shadowColor = '#0f0';
-      ctx.shadowBlur = 8;
-      ctx.fillText('BONUS LIFE INCOMING!', W / 2, H * 0.42);
-      ctx.shadowBlur = 0;
-    }
-    // Perfect clear bonus for challenge stages
-    if (isChallengeWave) {
-      const allKilled = enemies.filter(e => !e.on).length === 40;
-      if (allKilled && waveClearTimer > 80) {
-        ctx.fillStyle = '#f0f';
-        ctx.font = 'bold 20px monospace';
-        ctx.shadowColor = '#f0f';
-        ctx.shadowBlur = 10;
-        ctx.fillText('PERFECT CLEAR! +10000', W / 2, H * 0.42);
-        score += 10000;
-      }
-    }
-    ctx.restore();
+    ctx.globalAlpha = fadeIn * 0.7; ctx.fillText('Great job!', W / 2, H * 0.35); ctx.restore();
   }
 }
 
 function drawOver() {
   ctx.save();
   ctx.fillStyle = '#f00'; ctx.font = 'bold 48px monospace'; ctx.textAlign = 'center';
-  ctx.shadowColor = '#f00'; ctx.shadowBlur = 18; ctx.fillText('GAME OVER', W / 2, H * 0.30);
-  ctx.shadowBlur = 0; ctx.fillStyle = '#fff'; ctx.font = '18px monospace';
-  ctx.fillText('SCORE: ' + score.toString().padStart(8, '0'), W / 2, H * 0.38);
-  ctx.font = '14px monospace'; ctx.fillStyle = '#f80';
-  ctx.fillText('WAVE ' + wave, W / 2, H * 0.44);
-  ctx.fillStyle = '#aaa'; ctx.fillText('HIGH SCORE: ' + highScore.toString().padStart(8, '0'), W / 2, H * 0.50);
+  ctx.shadowColor = '#f00'; ctx.shadowBlur = 18; ctx.fillText('GAME OVER', W / 2, H * 0.35);
+  ctx.shadowBlur = 0; ctx.fillStyle = '#fff'; ctx.font = '19px monospace';
+  ctx.fillText('SCORE: ' + score.toString().padStart(8, '0'), W / 2, H * 0.42);
+  ctx.font = '15px monospace'; ctx.fillStyle = '#f80';
+  ctx.fillText('WAVE ' + wave, W / 2, H * 0.48);
+  ctx.fillStyle = '#aaa'; ctx.fillText('HIGH SCORE: ' + highScore.toString().padStart(8, '0'), W / 2, H * 0.54);
 
   if (score >= highScore && score > 0) {
     if (Math.sin(Date.now() * 0.006) > 0) {
