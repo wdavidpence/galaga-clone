@@ -2,106 +2,76 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover, maximum-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 <title>Galaga</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
-html, body {
-  width: 100%; height: 100%; overflow: hidden;
-  background: #000; touch-action: none;
-  user-select: none; -webkit-user-select: none;
-  position: fixed; top: 0; left: 0;
-  font-family: monospace;
-}
-canvas { display: block; width: 100%; height: 100%; touch-action: none; image-rendering: pixelated; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: #000; touch-action: none; }
+canvas { display: block; width: 100%; height: 100%; }
 </style>
 </head>
 <body>
 <canvas id="game"></canvas>
 <script>
-'use strict';
-
 // ===== AUDIO =====
 let audioCtx = null;
 function initAudio() {
-  try {
-    const AC = window.AudioContext || window.webkitAudioContext;
-    if (!AC) return;
-    if (!audioCtx) audioCtx = new AC({ latencyHint: 'interactive' });
-    if (audioCtx.state === 'suspended') audioCtx.resume().catch(()=>{});
-    if (!audioCtx._primed) {
-      const t = audioCtx.currentTime;
-      const osc = audioCtx.createOscillator();
-      const g = audioCtx.createGain();
-      g.gain.setValueAtTime(0.0001, t);
-      osc.frequency.setValueAtTime(440, t);
-      osc.connect(g).connect(audioCtx.destination);
-      osc.start(t); osc.stop(t + 0.015);
-      audioCtx._primed = true;
-    }
-  } catch(e) {}
+  if (audioCtx) return;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 }
 
-function playSound(type) {
+function playSound(name) {
+  if (!audioCtx) initAudio();
   if (!audioCtx) return;
   const t = audioCtx.currentTime;
   const osc = audioCtx.createOscillator();
   const g = audioCtx.createGain();
-  osc.connect(g).connect(audioCtx.destination);
-  g.gain.setValueAtTime(0.0001, t);
-  switch(type) {
+  osc.connect(g); g.connect(audioCtx.destination);
+  switch(name) {
     case 'shoot':
       osc.type='square'; osc.frequency.setValueAtTime(880,t);
-      osc.frequency.exponentialRampToValueAtTime(440,t+0.04);
-      g.gain.exponentialRampToValueAtTime(0.12,t+0.005);
-      g.gain.exponentialRampToValueAtTime(0.001,t+0.06);
-      osc.start(t); osc.stop(t+0.07); break;
+      osc.frequency.exponentialRampToValueAtTime(440,t+0.05);
+      g.gain.setValueAtTime(0.12,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.08);
+      osc.start(t); osc.stop(t+0.09); break;
     case 'explode':
       osc.type='sawtooth'; osc.frequency.setValueAtTime(200,t);
-      osc.frequency.exponentialRampToValueAtTime(40,t+0.22);
-      g.gain.exponentialRampToValueAtTime(0.16,t+0.01);
-      g.gain.exponentialRampToValueAtTime(0.001,t+0.22);
-      osc.start(t); osc.stop(t+0.23); break;
+      osc.frequency.exponentialRampToValueAtTime(30,t+0.2);
+      g.gain.setValueAtTime(0.15,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.25);
+      osc.start(t); osc.stop(t+0.26); break;
     case 'bigExplode':
       osc.type='sawtooth'; osc.frequency.setValueAtTime(150,t);
-      osc.frequency.exponentialRampToValueAtTime(30,t+0.35);
-      g.gain.exponentialRampToValueAtTime(0.19,t+0.01);
-      g.gain.exponentialRampToValueAtTime(0.001,t+0.35);
-      osc.start(t); osc.stop(t+0.36); break;
-    case 'gameover':
-      osc.type='sawtooth'; osc.frequency.setValueAtTime(440,t);
-      osc.frequency.exponentialRampToValueAtTime(55,t+0.7);
-      g.gain.exponentialRampToValueAtTime(0.11,t+0.02);
-      g.gain.exponentialRampToValueAtTime(0.001,t+0.7);
-      osc.start(t); osc.stop(t+0.72); break;
+      osc.frequency.exponentialRampToValueAtTime(20,t+0.4);
+      g.gain.setValueAtTime(0.2,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.5);
+      osc.start(t); osc.stop(t+0.51); break;
     case 'powerup':
-      osc.type='sine'; osc.frequency.setValueAtTime(440,t);
-      osc.frequency.setValueAtTime(660,t+0.05);
-      osc.frequency.setValueAtTime(880,t+0.1);
-      g.gain.exponentialRampToValueAtTime(0.15,t+0.01);
-      g.gain.exponentialRampToValueAtTime(0.001,t+0.25);
-      osc.start(t); osc.stop(t+0.26); break;
+      osc.type='sine'; osc.frequency.setValueAtTime(523,t);
+      osc.frequency.setValueAtTime(659,t+0.1);
+      osc.frequency.setValueAtTime(784,t+0.2);
+      g.gain.setValueAtTime(0.15,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.35);
+      osc.start(t); osc.stop(t+0.36); break;
     case 'dive':
-      osc.type='sawtooth'; osc.frequency.setValueAtTime(600,t);
-      osc.frequency.exponentialRampToValueAtTime(100,t+0.3);
-      g.gain.exponentialRampToValueAtTime(0.08,t+0.01);
-      g.gain.exponentialRampToValueAtTime(0.001,t+0.3);
-      osc.start(t); osc.stop(t+0.32); break;
+      osc.type='sawtooth'; osc.frequency.setValueAtTime(300,t);
+      osc.frequency.linearRampToValueAtTime(150,t+0.3);
+      g.gain.setValueAtTime(0.08,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.35);
+      osc.start(t); osc.stop(t+0.36); break;
     case 'wave':
-      osc.type='sine'; osc.frequency.setValueAtTime(300,t);
-      osc.frequency.exponentialRampToValueAtTime(900,t+0.4);
-      g.gain.exponentialRampToValueAtTime(0.1,t+0.01);
-      g.gain.exponentialRampToValueAtTime(0.001,t+0.4);
-      osc.start(t); osc.stop(t+0.42); break;
+      osc.type='square'; osc.frequency.setValueAtTime(440,t);
+      osc.frequency.setValueAtTime(554,t+0.15);
+      osc.frequency.setValueAtTime(659,t+0.3);
+      g.gain.setValueAtTime(0.12,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.5);
+      osc.start(t); osc.stop(t+0.51); break;
     case 'waveClear':
-      osc.type='sine';
-      osc.frequency.setValueAtTime(440,t);
-      osc.frequency.setValueAtTime(554,t+0.08);
-      osc.frequency.setValueAtTime(659,t+0.16);
-      osc.frequency.setValueAtTime(880,t+0.24);
-      g.gain.exponentialRampToValueAtTime(0.14,t+0.01);
-      g.gain.exponentialRampToValueAtTime(0.001,t+0.45);
-      osc.start(t); osc.stop(t+0.46); break;
+      osc.type='square'; osc.frequency.setValueAtTime(523,t);
+      osc.frequency.setValueAtTime(659,t+0.12);
+      osc.frequency.setValueAtTime(784,t+0.24);
+      osc.frequency.setValueAtTime(1047,t+0.36);
+      g.gain.setValueAtTime(0.15,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.6);
+      osc.start(t); osc.stop(t+0.61); break;
+    case 'gameover':
+      osc.type='sawtooth'; osc.frequency.setValueAtTime(400,t);
+      osc.frequency.linearRampToValueAtTime(80,t+1.0);
+      g.gain.setValueAtTime(0.2,t); g.gain.exponentialRampToValueAtTime(0.001,t+1.2);
+      osc.start(t); osc.stop(t+1.21); break;
     case 'bossWarn':
       osc.type='square'; osc.frequency.setValueAtTime(800,t);
       osc.frequency.setValueAtTime(600,t+0.1);
@@ -136,184 +106,21 @@ function playSound(type) {
       g.gain.exponentialRampToValueAtTime(0.2,t+0.01);
       g.gain.exponentialRampToValueAtTime(0.001,t+0.5);
       osc.start(t); osc.stop(t+0.52); break;
-  }
-}
-
-// ===== MUSIC ENGINE =====
-let musicGain = null;
-let musicEnabled = false;
-let musicPlaying = false;
-let musicEvolveTimer = 0;
-
-const BASS_CHORDS = [
-  [65,82,98], [73,92,110], [82,103,123], [87,110,131],
-  [65,82,98], [73,92,110], [98,123,147], [87,110,131]
-];
-const MELODY_SCALE = [
-  262,294,330,349,392,440,494,523,
-  587,659,698,784,880,988,1047
-];
-const RHYTHM_SEQ = [1,0,1,1,0,1,1,0, 1,0,1,1,0,1,0,1];
-
-function musicEnsureInit() {
-  if (!audioCtx) initAudio();
-  if (!audioCtx || musicPlaying) return;
-  musicGain = audioCtx.createGain();
-  musicGain.gain.value = 0.065;
-  musicGain.connect(audioCtx.destination);
-  musicPlaying = true;
-  musicEvolveTimer = 0;
-}
-
-function musicNote(freq, dur, type, vol) {
-  if (!audioCtx || !musicGain) return;
-  const t = audioCtx.currentTime;
-  const osc = audioCtx.createOscillator();
-  const g = audioCtx.createGain();
-  osc.type = type;
-  osc.frequency.setValueAtTime(freq, t);
-  g.gain.setValueAtTime(vol * 0.7, t);
-  g.gain.exponentialRampToValueAtTime(0.001, t + dur * 0.92);
-  osc.connect(g); g.connect(musicGain);
-  osc.start(t); osc.stop(t + dur + 0.01);
-}
-
-function musicChord(chord, dur, type, vol) {
-  for (const f of chord) musicNote(f, dur, type, vol);
-}
-
-function musicDrumKick() {
-  if (!audioCtx || !musicGain) return;
-  const t = audioCtx.currentTime;
-  const osc = audioCtx.createOscillator();
-  const g = audioCtx.createGain();
-  osc.type = 'sine';
-  osc.frequency.setValueAtTime(180, t);
-  osc.frequency.exponentialRampToValueAtTime(38, t + 0.07);
-  g.gain.setValueAtTime(0.18, t);
-  g.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
-  osc.connect(g); g.connect(musicGain);
-  osc.start(t); osc.stop(t + 0.1);
-}
-
-function musicDrumHH(open) {
-  if (!audioCtx || !musicGain) return;
-  const t = audioCtx.currentTime;
-  const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * (open ? 0.08 : 0.04), audioCtx.sampleRate);
-  const d = buf.getChannelData(0);
-  for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (open ? 0.6 : 1.0);
-  const src = audioCtx.createBufferSource();
-  src.buffer = buf;
-  const hp = audioCtx.createBiquadFilter();
-  hp.type = 'highpass'; hp.frequency.value = open ? 5000 : 9000;
-  const g = audioCtx.createGain();
-  g.gain.setValueAtTime(open ? 0.055 : 0.035, t);
-  g.gain.exponentialRampToValueAtTime(0.001, t + (open ? 0.08 : 0.04));
-  src.connect(hp); hp.connect(g); g.connect(musicGain);
-  src.start(t); src.stop(t + (open ? 0.09 : 0.05));
-}
-
-function musicSnare() {
-  if (!audioCtx || !musicGain) return;
-  const t = audioCtx.currentTime;
-  const buf = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.07, audioCtx.sampleRate);
-  const d = buf.getChannelData(0);
-  for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
-  const src = audioCtx.createBufferSource();
-  src.buffer = buf;
-  const bp = audioCtx.createBiquadFilter();
-  bp.type = 'bandpass'; bp.frequency.value = 3000; bp.Q.value = 1.2;
-  const g = audioCtx.createGain();
-  g.gain.setValueAtTime(0.07, t);
-  g.gain.exponentialRampToValueAtTime(0.001, t + 0.07);
-  src.connect(bp); bp.connect(g); g.connect(musicGain);
-  const osc = audioCtx.createOscillator();
-  const g2 = audioCtx.createGain();
-  osc.type = 'triangle';
-  osc.frequency.setValueAtTime(200, t);
-  osc.frequency.exponentialRampToValueAtTime(80, t + 0.04);
-  g2.gain.setValueAtTime(0.08, t);
-  g2.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
-  osc.connect(g2); g2.connect(musicGain);
-  src.start(t); src.stop(t + 0.08);
-  osc.start(t); osc.stop(t + 0.06);
-}
-
-function startMusic() {
-  if (!audioCtx) initAudio();
-  if (!audioCtx) return;
-  musicGain = audioCtx.createGain();
-  musicGain.gain.value = 0.065;
-  musicGain.connect(audioCtx.destination);
-  musicEnabled = true;
-  musicEvolveTimer = 0;
-}
-
-function stopMusic() {
-  musicEnabled = false;
-  musicPlaying = false;
-}
-
-function toggleMusic() {
-  musicEnabled = !musicEnabled;
-  if (musicEnabled && state === STATE.PLAYING) startMusic();
-  else stopMusic();
-}
-
-function musicTick() {
-  if (!musicEnabled || !musicPlaying || state !== STATE.PLAYING) return;
-  musicEvolveTimer++;
-  // 4-beat pattern: 16 ticks at ~60fps = 1 beat per 4 ticks
-  // Actually use every 2 ticks = 30bpm feel, do 8 ticks per measure
-  if (musicEvolveTimer % 2 !== 0) return;
-  const tick = musicEvolveTimer / 2; // beat index
-  const beat = tick % 8;
-  const chordIdx = Math.floor(tick / 8) % BASS_CHORDS.length;
-  const chord = BASS_CHORDS[chordIdx];
-  const waveEvolve = Math.min(3, Math.floor(wave / 5));
-
-  // Kick on 1,3
-  if (beat === 0 || beat === 4) { musicDrumKick(); }
-  // Snare on 2,4 (picks up with waves)
-  if (waveEvolve >= 1 && (beat === 2 || beat === 6)) musicSnare();
-  if (beat === 3 || beat === 7) musicSnare();
-  // Hi-hat on every beat, open on off-beats
-  musicDrumHH(beat % 2 === 1);
-  if (beat === 5) musicDrumHH(true);
-
-  // Bass: play chord on beat 1
-  if (beat === 0) {
-    const bd = 0.25 + waveEvolve * 0.05;
-    musicChord(chord, bd, 'triangle', 0.22);
-  }
-  // Arpeggiated bass on 3,5,7
-  if (beat === 2 || beat === 4 || beat === 6) {
-    const noteIdx = (beat / 2) % chord.length;
-    musicNote(chord[noteIdx] * 1.5, 0.15, 'triangle', 0.12);
-  }
-
-  // Melody: evolves with waves
-  if (waveEvolve === 0 && beat === 0) {
-    musicNote(MELODY_SCALE[3], 0.3, 'square', 0.04);
-  }
-  if (waveEvolve <= 1 && (beat === 2 || beat === 6)) {
-    const m = MELODY_SCALE[2 + (tick % MELODY_SCALE.length)];
-    musicNote(m, 0.2, 'square', 0.035);
-  }
-  if (waveEvolve >= 1 && (beat === 1 || beat === 5)) {
-    const m = MELODY_SCALE[5 + ((tick * 3) % (MELODY_SCALE.length - 5))];
-    musicNote(m, 0.15, 'square', 0.03);
-  }
-  if (waveEvolve >= 2 && (beat === 3 || beat === 7)) {
-    const m = MELODY_SCALE[8 + ((tick * 2) % (MELODY_SCALE.length - 8))];
-    musicNote(m, 0.12, 'sawtooth', 0.02);
-  }
-  // Lead flourish on beat 0 every 4 measures
-  if (beat === 0 && tick % 32 === 0) {
-    const flair = [523,659,784,880];
-    for (let i = 0; i < 4; i++) {
-      setTimeout(() => musicNote(flair[i], 0.15, 'square', 0.04), i * 100);
-    }
+    case 'formationTick':
+      osc.type='square'; osc.frequency.setValueAtTime(1200,t);
+      g.gain.setValueAtTime(0.04,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.03);
+      osc.start(t); osc.stop(t+0.04); break;
+    case 'capture':
+      osc.type='sine'; osc.frequency.setValueAtTime(200,t);
+      osc.frequency.linearRampToValueAtTime(600,t+0.4);
+      g.gain.setValueAtTime(0.12,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.5);
+      osc.start(t); osc.stop(t+0.51); break;
+    case 'rescue':
+      osc.type='sine'; osc.frequency.setValueAtTime(800,t);
+      osc.frequency.setValueAtTime(1000,t+0.08);
+      osc.frequency.setValueAtTime(1200,t+0.16);
+      g.gain.setValueAtTime(0.15,t); g.gain.exponentialRampToValueAtTime(0.001,t+0.3);
+      osc.start(t); osc.stop(t+0.31); break;
   }
 }
 
@@ -322,7 +129,7 @@ const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
 let W, H;
 const dprMax = 2;
-const VERSION = 'v1.0.11';
+const VERSION = 'v2.0.0';
 function playerLaneY() { return H - Math.max(96, Math.min(126, H * 0.145)); }
 function enemyTopY() { return Math.max(86, H * 0.125); }
 
@@ -348,15 +155,17 @@ let frameNum = 0;
 let gameTime = 0;
 let waveClearTimer = 0, waveClearMsg = '';
 
-// Attack wave system (Galaga-style coordinated dives after ~20s)
-let attackWaveActive = false;
-let nextAttackTime = 0;
-let attackWaveCount = 0;
+// Challenge stage flag
+let isChallengeStage = false;
 
 // Tractor beam state
 let tractorBeam = null;
 let tractorBeamTimer = 0;
 let tractorBeamAlpha = 0;
+
+// Rescue state - boss has captured player, another ship can rescue
+let rescuedShip = null; // {x, y, vx, vy} - the player's captured ship orbiting boss
+let rescueActive = false; // true when player is captured and can be rescued
 
 // Stars
 let starCount = (W > 600) ? 80 : 60;
@@ -387,12 +196,22 @@ let player = {
 let enemies = [];
 const ET = {
   bee:    { c: '#2468ff', a: '#ffd21c', hp: 1, sc: 50,  w: 22, h: 20 },
-  butter: { c: '#ff2a24', a: '#ffffff', hp: 1, sc: 80,  w: 26, h: 22 },
+  butterfly: { c: '#ff2a24', a: '#ffffff', hp: 1, sc: 80,  w: 26, h: 22 },
   boss:   { c: '#21e84a', a: '#52a7ff', hp: 2, sc: 150, w: 36, h: 30 },
   boss2:  { c: '#21e84a', a: '#52a7ff', hp: 2, sc: 150, w: 36, h: 30 }
 };
 
-// Dive attack patterns (Galaga-style)
+// Entry animation groups - enemies fly in from screen edges with loops
+let entryGroups = []; // {enemies: [], phase: 'enter'|'settling', timer: 0}
+let entryPhase = false; // true during entry animation
+
+// Dive patterns per type
+const DIVE_PATTERNS = {
+  bee: ['loop', 'sweep', 'zigzag'],
+  butterfly: ['adjusting', 'curved', 'swoop'],
+  boss: ['capture_run', 'loop_dive', 'straight']
+};
+
 function startAttackDive(e, pattern) {
   e.st = 'dive';
   e.divePhase = 0;
@@ -402,7 +221,7 @@ function startAttackDive(e, pattern) {
   e.diveApproachX = player.x + (Math.random() - 0.5) * 100;
   e.diveReturnX = e.hx;
   e.diveReturnY = e.hy;
-  e.attackFireRate = 0.025 + wave * 0.003; // more aggressive fire
+  e.attackFireRate = 0.025 + wave * 0.003;
   playSound('dive');
 }
 
@@ -410,8 +229,8 @@ function mkForm() {
   enemies = [];
   const rowsSpec = [
     { type: 'boss', count: 4, y: enemyTopY(), stagger: 0 },
-    { type: 'butter', count: 8, y: enemyTopY() + 42, stagger: 1 },
-    { type: 'butter', count: 8, y: enemyTopY() + 72, stagger: 2 },
+    { type: 'butterfly', count: 8, y: enemyTopY() + 42, stagger: 1 },
+    { type: 'butterfly', count: 8, y: enemyTopY() + 72, stagger: 2 },
     { type: 'bee', count: 10, y: enemyTopY() + 108, stagger: 3 },
     { type: 'bee', count: 10, y: enemyTopY() + 138, stagger: 4 }
   ];
@@ -438,18 +257,58 @@ function mkForm() {
         diveApproachX: 0, diveReturnX: 0, diveReturnY: 0,
         champion: isChampion,
         deathAnim: 0, spawnDelay: idx * 3, spawnAnim: 18,
-        attackPattern: 'normal', attackFireRate: 0.012
+        attackPattern: 'normal', attackFireRate: 0.012,
+        // Entry animation
+        entryGroup: -1, // which group this enemy belongs to
+        entryStartX: 0, entryStartY: 0,
+        entryAngle: 0,
+        // Boss capture state
+        isCapturing: false,
+        captureAngle: 0,
+        // Escort count for scoring
+        escortCount: 0
       });
       idx++;
     }
   }
+
+  // Assign entry groups: 5 groups, one per row
+  entryGroups = [];
+  for (let g = 0; g < 5; g++) {
+    const groupEnemies = enemies.filter(e => e.spawnDelay === idx - (5 - g) * 10 + Math.floor(Math.random() * 3));
+    // Actually assign by row index
+  }
+  // Re-assign entry groups properly
+  let groupIdx = 0;
+  for (const row of rowsSpec) {
+    const rowEnemies = enemies.filter(e => {
+      // Find enemies in this row by hy
+      return Math.abs(e.hy - row.y) < 5;
+    });
+    for (const e of rowEnemies) {
+      e.entryGroup = groupIdx;
+    }
+    entryGroups.push({
+      enemies: rowEnemies,
+      phase: 'waiting', // waiting -> entering -> settling
+      timer: 0,
+      startX: -50 + Math.random() * (W + 100), // random edge entry
+      startY: -30 - Math.random() * 60,
+      angle: Math.atan2(row.y - (-30), row.x - (-50)),
+      loopRadius: 80 + Math.random() * 60,
+      loopSpeed: 0.02 + Math.random() * 0.015,
+      enterSpeed: 1.2 + Math.random() * 0.4,
+      settled: false
+    });
+    groupIdx++;
+  }
+
   powerups = []; scorePopups = []; formParticles = [];
   tractorBeam = null;
   tractorBeamTimer = 420; tractorBeamAlpha = 0;
   player.caught = false; player.caughtTimer = 0;
-  attackWaveActive = false;
-  nextAttackTime = 0;
-  attackWaveCount = 0;
+  rescueActive = false; rescuedShip = null;
+  entryPhase = true; // Start with entry animation
 }
 
 function eVis(e) { return e.st === 'form' ? e.x + formationX : e.x; }
@@ -463,14 +322,12 @@ let rightBtnX = 0, rightBtnY = 0, rightBtnR = 35;
 let fireBtnX = 0, fireBtnY = 0, fireBtnR = 55;
 
 function updateBtns() {
-  const safeBottom = Math.max(32, Math.min(48, H * 0.055));
-  const bottomY = H - safeBottom;
-  leftBtnX = W * 0.14; leftBtnY = bottomY;
-  rightBtnX = W * 0.34; rightBtnY = bottomY;
-  fireBtnX = W * 0.82; fireBtnY = bottomY;
-  const br = Math.max(34, Math.min(52, W * 0.12));
+  const br = Math.max(26, W * 0.09);
+  leftBtnX = br + 3; leftBtnY = H - br * 4 - 2;
+  rightBtnX = W - br - 3; rightBtnY = H * 0.5;
+  fireBtnX = W - br * 2.5; fireBtnY = br + 15;
   leftBtnR = rightBtnR = br;
-  fireBtnR = Math.max(48, br * 1.28);
+  fireBtnR = Math.max(28, br * 1.05);
 }
 updateBtns();
 
@@ -480,12 +337,11 @@ canvas.addEventListener('pointerdown', (e) => {
   if (state === STATE.MENU) { start(); return; }
   if (state === STATE.GAMEOVER) { state = STATE.MENU; return; }
   const dx = x - fireBtnX, dy = y - fireBtnY;
-  if (x > W * 0.58 || Math.hypot(dx, dy) < fireBtnR * 1.5) { touchFire = true; fire(); return; }
+  if (Math.hypot(dx, dy) < fireBtnR * 1.5) { touchFire = true; fire(); return; }
   const dL = x - leftBtnX, dyL = y - leftBtnY;
-  if (Math.hypot(dL, dyL) < leftBtnR * 1.35) { touchLeft = true; return; }
+  if (Math.hypot(dL, dyL) < leftBtnR * 1.4) { touchLeft = true; return; }
   const dR = x - rightBtnX, dyR = y - rightBtnY;
-  if (Math.hypot(dR, dyR) < rightBtnR * 1.35) { touchRight = true; return; }
-  if (x < W * 0.58) { touchMoving = true; lastTouchX = x; lastTouchY = y; player.targetVx += (x - player.x) * 0.045; }
+  if (Math.hypot(dR, dyR) < rightBtnR * 1.4) { touchRight = true; return; }
 });
 
 canvas.addEventListener('pointermove', (e) => {
@@ -548,9 +404,8 @@ function start() {
   shakeTimer = 0; flashTimer = 0; frameNum = 0; gameTime = 0;
   waveClearTimer = 0; waveClearMsg = '';
   tractorBeam = null; tractorBeamTimer = 0; tractorBeamAlpha = 0;
-  attackWaveActive = false; nextAttackTime = 0; attackWaveCount = 0;
+  rescueActive = false; rescuedShip = null;
   mkForm();
-  startMusic();
 }
 
 // ===== UPDATE =====
@@ -585,56 +440,202 @@ function update() {
   if (flashTimer > 0) flashTimer--;
   if (waveClearTimer > 0) waveClearTimer--;
   gameTime++;
-  musicTick();
 
-  // --- ATTACK WAVE SYSTEM ---
-  // After ~20 seconds (1200 frames at 60fps), start coordinated attack waves
-  if (gameTime > 1200 && !attackWaveActive) {
-    attackWaveActive = true;
-    nextAttackTime = 300 + Math.random() * 200; // 5-8 seconds until next wave
-  }
-
-  if (attackWaveActive && nextAttackTime <= 0) {
-    const waveSize = 1; // one at a time keeps iPhone play fair
-    const patterns = ['zigzag', 'spiral', 'diagonal', 'swarm'];
-    const pattern = patterns[Math.floor(Math.random() * patterns.length)];
-    const formEnemies = enemies.filter(e => e.on && e.al && e.st === 'form' && e.dt <= 0);
-    const toDive = formEnemies.slice(0, waveSize);
-    for (const e of toDive) {
-      if (e.st === 'form' && e.dt <= 0) startAttackDive(e, pattern);
+  // === ENTRY ANIMATION ===
+  if (entryPhase) {
+    let allSettled = true;
+    for (const g of entryGroups) {
+      if (g.phase === 'waiting') {
+        // Wait for staggered start
+        g.timer++;
+        if (g.timer >= g.enemies.length * 2) {
+          g.phase = 'entering';
+          g.timer = 0;
+        }
+        allSettled = false;
+      } else if (g.phase === 'entering') {
+        g.timer++;
+        const t = g.timer * g.loopSpeed;
+        for (const e of g.enemies) {
+          if (!e.on || !e.al) continue;
+          // Loop-de-loop entry: spiral in toward formation position
+          const loopX = g.startX + Math.cos(t) * g.loopRadius * (1 - g.timer / 200);
+          const loopY = g.startY + Math.sin(t) * g.loopRadius * 0.6 * (1 - g.timer / 200);
+          const targetX = e.hx + formationX;
+          const targetY = e.hy;
+          const progress = Math.min(1, g.timer / 180);
+          e.x = loopX + (targetX - loopX) * progress;
+          e.y = loopY + (targetY - loopY) * progress;
+          e.st = 'form'; // During entry, enemies are in "form" state visually
+        }
+        if (g.timer > 200) {
+          g.phase = 'settling';
+          g.timer = 0;
+        }
+        allSettled = false;
+      } else if (g.phase === 'settling') {
+        g.timer++;
+        for (const e of g.enemies) {
+          if (!e.on || !e.al) continue;
+          const tx = e.hx + formationX;
+          const ty = e.hy;
+          e.x += (tx - e.x) * 0.15;
+          e.y += (ty - e.y) * 0.15;
+        }
+        if (g.timer > 30) {
+          g.phase = 'done';
+          // Start dive timers for this group
+          for (const e of g.enemies) {
+            if (e.on && e.al) {
+              e.dt = 120 + Math.random() * 180;
+            }
+          }
+        }
+        allSettled = false;
+      }
     }
-    attackWaveCount++;
-    nextAttackTime = 360 + Math.random() * 240; // 6-10 seconds between waves
-    shakeTimer = 6; shakeIntensity = 4;
+    if (allSettled) {
+      entryPhase = false;
+      // All enemies have dive timers set
+    }
   }
-  if (nextAttackTime > 0) nextAttackTime--;
 
-  // Tractor beam
+  // === FORMATION DRIFT ===
+  const driftSpeed = 0.25 + wave * 0.03;
+  formationX += formationDir * driftSpeed;
+  const edgeMargin = Math.max(14, W * 0.055);
+  if (formationX > edgeMargin) { formationDir = -1; shakeTimer = 3; }
+  else if (formationX < -edgeMargin) { formationDir = 1; shakeTimer = 3; }
+
+  // === FORMATION TICK SOUND ===
+  // Galaga has a tick sound when formation is active - urgency as enemies die
+  if (frameNum % 60 === 0 && enemies.filter(e => e.on && e.al).length > 0) {
+    const alive = enemies.filter(e => e.on && e.al).length;
+    const total = enemies.length;
+    const ratio = alive / total;
+    // Faster tick as more enemies die (urgency)
+    if (Math.random() < (1 - ratio) * 0.3) {
+      playSound('formationTick');
+    }
+  }
+
+  // === TRACTOR BEAM ===
+  tractorBeamTimer--;
+  const champions = enemies.filter(e => e.on && e.al && e.champion && e.st === 'form');
+  if (champions.length > 0 && tractorBeam === null && tractorBeamTimer <= 0 && !rescueActive) {
+    const champ = champions[Math.floor(Math.random() * champions.length)];
+    if (champ.dt <= 0) {
+      // Boss stops and aims tractor beam at player
+      champ.isCapturing = true;
+      const angle = Math.atan2(player.y - champ.y, player.x - champ.x);
+      const beamDist = 200 + Math.random() * 80;
+      tractorBeam = {
+        x: champ.x + Math.cos(angle) * beamDist,
+        y: champ.y + Math.sin(angle) * beamDist,
+        angle, timer: 100, // Longer beam duration
+        sourceX: champ.x, sourceY: champ.y,
+        coneAngle: 0.3 // Wider cone
+      };
+      tractorBeamTimer = 300 + Math.random() * 200;
+      playSound('bossWarn');
+    }
+  }
+
   if (tractorBeam) {
     tractorBeam.timer--;
-    tractorBeamAlpha = Math.min(1, tractorBeamAlpha + 0.08);
+    tractorBeamAlpha = Math.min(1, tractorBeamAlpha + 0.06);
     if (tractorBeam.timer <= 0) {
       tractorBeamAlpha = 0; playSound('beamBreak'); tractorBeam = null;
+      // Boss resumes normal behavior
+      for (const e of enemies) { if (e.isCapturing) e.isCapturing = false; }
     }
-    if (tractorBeamAlpha > 0.5 && !player.caught) {
+    // Wider capture zone - conical beam
+    if (tractorBeamAlpha > 0.4 && !player.caught && !rescueActive) {
       const bx = tractorBeam.x, by = tractorBeam.y;
-      if (Math.hypot(bx - player.x, by - player.y) < 22) { player.caught = true; player.caughtTimer = 0; }
+      // Check if player is within the cone from boss source
+      const dx = player.x - tractorBeam.sourceX;
+      const dy = player.y - tractorBeam.sourceY;
+      const dist = Math.hypot(dx, dy);
+      const angleToPlayer = Math.atan2(dy, dx);
+      let angleDiff = angleToPlayer - tractorBeam.angle;
+      while (angleDiff > Math.PI) angleDiff -= Math.PI * 2;
+      while (angleDiff < -Math.PI) angleDiff += Math.PI * 2;
+      // Capture if within cone and reasonable distance
+      if (Math.abs(angleDiff) < tractorBeam.coneAngle && dist < 280 && dist > 30) {
+        player.caught = true; player.caughtTimer = 0;
+      }
     }
     if (player.caught) {
       player.caughtTimer++;
       const bx = tractorBeam.x, by = tractorBeam.y;
       const dx = bx - player.x, dy = by - player.y;
       const dist = Math.hypot(dx, dy);
-      if (dist > 5) { player.x += (dx / dist) * 0.35; player.y += (dy / dist) * 0.35; }
-      if (player.caughtTimer > 150) {
-        if (player.dual) { player.dual = false; playSound('dualLost'); spawnP(player.x, player.y, '#ff00ff', 8); shakeTimer = 8; shakeIntensity = 5; }
-        player.caught = false; player.caughtTimer = 0;
-        tractorBeamAlpha = 0; tractorBeam = null;
+      if (dist > 5) { player.x += (dx / dist) * 0.3; player.y += (dy / dist) * 0.3; }
+      if (player.caughtTimer > 180) {
+        // Player fully captured!
+        if (player.dual) { player.dual = false; playSound('dualLost'); }
+        // Set up rescue state - player's ship orbits the boss
+        rescueActive = true;
+        const capturingBoss = enemies.find(e => e.isCapturing && e.on && e.al);
+        if (capturingBoss) {
+          rescuedShip = { x: capturingBoss.x, y: capturingBoss.y, angle: 0 };
+          player.caught = false; player.caughtTimer = 0;
+          tractorBeamAlpha = 0; tractorBeam = null;
+          playSound('capture');
+        } else {
+          player.caught = false; player.caughtTimer = 0;
+          tractorBeamAlpha = 0; tractorBeam = null;
+        }
       }
     }
   }
 
-  // Touch / keyboard movement
+  // === RESCUE MECHANIC ===
+  if (rescueActive && rescuedShip) {
+    // Find the boss that captured the player
+    const capturingBoss = enemies.find(e => e.isCapturing && e.on && e.al);
+    if (capturingBoss) {
+      // Player's ship orbits the boss
+      rescuedShip.angle += 0.03;
+      const orbitRadius = 25;
+      rescuedShip.x = capturingBoss.x + Math.cos(rescuedShip.angle) * orbitRadius;
+      rescuedShip.y = capturingBoss.y + Math.sin(rescuedShip.angle) * orbitRadius;
+
+      // If boss is destroyed while player is captured, auto-rescue
+      if (!capturingBoss.on || !capturingBoss.al) {
+        rescueActive = false;
+        rescuedShip = null;
+        playSound('rescue');
+        // Player appears at boss's old position
+        player.x = capturingBoss.hx + formationX;
+        player.y = capturingBoss.hy;
+        player.inv = 90;
+      }
+
+      // If player shoots the capturing boss, rescue!
+      for (const b of player.bullets) {
+        if (Math.hypot(b.x - capturingBoss.x, b.y - capturingBoss.y) < 20) {
+          // Hit the boss - rescue!
+          b.hit = true; // Mark for removal
+          rescueActive = false;
+          rescuedShip = null;
+          playSound('rescue');
+          player.x = capturingBoss.hx + formationX;
+          player.y = capturingBoss.hy;
+          player.inv = 90;
+          // Bonus points for rescue
+          score += 200;
+          scorePopups.push({ x: player.x, y: player.y - 20, text: '+200 RESCUE!', life: 60, c: '#00ff88' });
+        }
+      }
+    } else {
+      // Boss gone, auto-rescue
+      rescueActive = false;
+      rescuedShip = null;
+    }
+  }
+
+  // === TOUCH / KEYBOARD MOVEMENT ===
   if (touchLeft) player.targetVx -= 0.4;
   if (touchRight) player.targetVx += 0.4;
   if (keys['ArrowLeft'] || keys['a']) player.targetVx -= 0.4;
@@ -653,32 +654,12 @@ function update() {
   // Player bullets
   for (let i = player.bullets.length - 1; i >= 0; i--) {
     const b = player.bullets[i];
+    if (b.hit) { player.bullets.splice(i, 1); continue; }
     b.y += b.vy;
     if (b.y < -25) player.bullets.splice(i, 1);
   }
 
-  // Formation drift - Galaga style: reverses at edges with slight bounce
-  const driftSpeed = 0.25 + wave * 0.03;
-  formationX += formationDir * driftSpeed;
-  const edgeMargin = Math.max(14, W * 0.055);
-  if (formationX > edgeMargin) { formationDir = -1; shakeTimer = 3; }
-  else if (formationX < -edgeMargin) { formationDir = 1; shakeTimer = 3; }
-
-  // Tractor beam trigger
-  tractorBeamTimer--;
-  const champions = enemies.filter(e => e.on && e.al && e.champion && e.st === 'form');
-  if (champions.length > 0 && tractorBeam === null && tractorBeamTimer <= 0) {
-    const champ = champions[Math.floor(Math.random() * champions.length)];
-    if (champ.dt <= 0) {
-      const angle = Math.atan2(player.y - champ.y, player.x - champ.x);
-      const beamDist = 250 + Math.random() * 100;
-      tractorBeam = { x: champ.x + Math.cos(angle) * beamDist, y: champ.y + Math.sin(angle) * beamDist, angle, timer: 80 };
-      tractorBeamTimer = 250 + Math.random() * 200;
-      playSound('bossWarn');
-    }
-  }
-
-  // Enemies
+  // === ENEMIES ===
   for (const e of enemies) {
     if (!e.on || !e.al) continue;
     e.ft = Math.max(0, e.ft - 1);
@@ -686,20 +667,22 @@ function update() {
     if (e.deathAnim > 0) { e.deathAnim--; continue; }
 
     if (e.st === 'form') {
+      // Formation oscillation - Galaga style "throbbing"
       e.y = e.hy + Math.sin(Date.now() * 0.0015 + e.ph) * 2;
       if (e.dt > 0 && !(e.champion && tractorBeam !== null)) {
         e.dt--;
         if (e.dt <= 0) {
-          // Normal dive (not in attack wave)
+          // Choose dive pattern based on enemy type
+          const patterns = DIVE_PATTERNS[e.type] || ['normal'];
+          const pattern = patterns[Math.floor(Math.random() * patterns.length)];
           e.st = 'dive'; e.divePhase = 0; e.diveTimer = 0; e.scnt = 0;
           e.diveApproachX = player.x + (Math.random() - 0.5) * 60;
-          e.diveLoop = true;
-          e.attackPattern = 'normal'; e.attackFireRate = 0.015;
+          e.attackPattern = pattern; e.attackFireRate = 0.015 + wave * 0.002;
           playSound('dive');
         }
       }
-      if (e.sht <= 0 && e.scnt < 1 && Math.random() < 0.0015) {
-        e.sht = 100; e.scnt++;
+      if (e.sht <= 0 && e.scnt < 1 && Math.random() < 0.002) {
+        e.sht = 80; e.scnt++;
         shootAimed(e, eVis(e));
       }
     }
@@ -709,46 +692,111 @@ function update() {
       const dx = player.x - e.x, dy = player.y - e.y;
 
       if (e.divePhase === 0) {
-        e.x += (e.diveApproachX - e.x) * 0.04;
-        e.y += 0.8;
-        if (e.attackPattern === 'zigzag') e.x += Math.sin(e.diveTimer * 0.1) * 1.5;
-        else if (e.attackPattern === 'spiral') e.x += Math.cos(e.diveTimer * 0.08) * 1.2;
-        else if (e.attackPattern === 'diagonal') e.x += (dx > 0 ? 0.3 : -0.3);
-        if (e.diveTimer > 40 || Math.abs(e.x - e.diveApproachX) < 15) { e.divePhase = 1; e.diveTimer = 0; }
+        // Approach phase - different per type
+        if (e.attackPattern === 'loop') {
+          // Bee: large loop dive
+          e.x += Math.cos(e.diveTimer * 0.06) * 2;
+          e.y += 1.0;
+        } else if (e.attackPattern === 'adjusting') {
+          // Butterfly: adjusts path based on player position
+          e.x += (dx > 0 ? 0.4 : -0.4);
+          e.y += 0.9;
+        } else if (e.attackPattern === 'capture_run') {
+          // Boss: straight capture run toward player
+          e.x += (dx / Math.max(1, Math.abs(dx))) * 2.5;
+          e.y += 1.8;
+        } else if (e.attackPattern === 'loop_dive') {
+          // Boss: loop dive
+          e.x += Math.cos(e.diveTimer * 0.05) * 1.8;
+          e.y += 1.2;
+        } else if (e.attackPattern === 'sweep') {
+          // Bee: wide sweep
+          e.x += Math.sin(e.diveTimer * 0.08) * 2.5;
+          e.y += 1.0;
+        } else if (e.attackPattern === 'curved') {
+          // Butterfly: curved path
+          e.x += Math.cos(e.diveTimer * 0.07) * 1.5;
+          e.y += 1.1;
+        } else if (e.attackPattern === 'zigzag') {
+          e.x += Math.sin(e.diveTimer * 0.1) * 1.5;
+          e.y += 0.8;
+        } else if (e.attackPattern === 'swoop') {
+          // Butterfly: swoops toward player at end
+          e.x += (dx > 0 ? 0.5 : -0.5);
+          e.y += 1.3;
+        } else {
+          // Normal dive
+          e.x += (e.diveApproachX - e.x) * 0.04;
+          e.y += 0.8;
+        }
+        if (e.diveTimer > 50 || Math.abs(e.x - e.diveApproachX) < 18) { e.divePhase = 1; e.diveTimer = 0; }
       } else if (e.divePhase === 1) {
+        // Attack phase - different per type
         const diveAngle = Math.atan2(dy, dx);
-        e.x += Math.cos(diveAngle) * 1.4;
-        e.y += Math.sin(diveAngle) * 1.4;
-        if (e.attackPattern === 'u-turn') e.x += (e.diveTimer % 60 < 30 ? (dx > 0 ? 0.5 : -0.5) : (dx > 0 ? -0.5 : 0.5));
-        else if (e.attackPattern === 'swarm') { e.x += (dx > 0 ? 0.3 : -0.3); e.y += (dy > 0 ? 0.2 : -0.2); }
-        if (e.y > player.y + 30 || e.y > H + 15) { e.divePhase = 2; e.diveTimer = 0; }
+        if (e.attackPattern === 'capture_run') {
+          // Boss capture run: tries to reach player
+          e.x += Math.cos(diveAngle) * 2.8;
+          e.y += Math.sin(diveAngle) * 2.8;
+        } else if (e.attackPattern === 'loop') {
+          // Bee loop: continues past player
+          e.x += Math.cos(diveAngle) * 1.8;
+          e.y += Math.sin(diveAngle) * 1.8;
+        } else if (e.attackPattern === 'adjusting') {
+          // Butterfly: adjusts at dive end based on player position
+          e.x += Math.cos(diveAngle) * 1.6;
+          e.y += Math.sin(diveAngle) * 1.6;
+          // Subtle adjustment toward player
+          e.x += (dx > 0 ? 0.2 : -0.2);
+        } else if (e.attackPattern === 'loop_dive') {
+          e.x += Math.cos(diveAngle) * 1.5;
+          e.y += Math.sin(diveAngle) * 1.5;
+        } else if (e.attackPattern === 'sweep') {
+          e.x += Math.cos(diveAngle) * 1.5;
+          e.y += Math.sin(diveAngle) * 1.5;
+        } else if (e.attackPattern === 'swoop') {
+          e.x += Math.cos(diveAngle) * 2.0;
+          e.y += Math.sin(diveAngle) * 2.0;
+        } else {
+          e.x += Math.cos(diveAngle) * 1.5;
+          e.y += Math.sin(diveAngle) * 1.5;
+        }
+        // Return after conditions
+        if (e.diveTimer > 55 || e.y > player.y + 40 || e.y > H + 20 || e.x < -60 || e.x > W + 60) {
+          e.divePhase = 2; e.diveTimer = 0;
+        }
       } else if (e.divePhase === 2) {
+        // Return to formation
         const tx = e.hx + formationX;
         const ty = e.hy;
-        e.x += (tx - e.x) * 0.045;
-        e.y += (ty - e.y) * 0.045;
-        if (Math.hypot(e.x - tx, e.y - ty) < 18 || e.diveTimer > 170) {
+        if (e.y > ty + 3) {
+          e.x += (tx - e.x) * 0.12;
+          e.y -= 4.0;
+        } else {
+          e.x += (tx - e.x) * 0.18;
+          e.y += (ty - e.y) * 0.15;
+        }
+        if (Math.hypot(e.x - tx, e.y - ty) < 12 || e.diveTimer > 100) {
           e.st = 'form'; e.divePhase = 0; e.diveTimer = 0;
           e.x = e.hx; e.y = e.hy;
-          const restFrames = e.type === 'boss' ? 190 + Math.random() * 260 : 100 + Math.random() * 140;
+          const restFrames = e.type === 'boss' ? 200 + Math.random() * 250 : 110 + Math.random() * 130;
           e.dt = restFrames;
           e.attackPattern = 'normal'; e.scnt = 0;
         }
       }
 
-      // Shooting: more aggressive during attack waves
-      if (e.scnt < 1 && Math.random() < (e.attackPattern !== 'normal' ? e.attackFireRate : 0.015)) {
+      // Shooting during dive - more aggressive
+      if (e.scnt < 1 && Math.random() < e.attackFireRate) {
         e.scnt++; shootAimed(e, e.x);
       }
     }
 
     if (e.st === 'retreat') {
       e.x += Math.cos(e.da) * 1.5; e.y += Math.sin(e.da) * 1.5;
-      if (e.y < -40) { e.st = 'form'; e.x = e.hx; e.y = e.hy; e.divePhase = 0; e.attackPattern = 'normal'; }
+      if (e.y < -40) { e.st = 'form'; e.x = e.hx; e.y = e.hy; }
     }
   }
 
-  // Enemy bullets
+  // === ENEMY BULLETS ===
   for (let i = enemyBullets.length - 1; i >= 0; i--) {
     const b = enemyBullets[i];
     b.x += b.vx; b.y += b.vy;
@@ -762,9 +810,10 @@ function update() {
     }
   }
 
-  // Player bullets vs enemies
+  // === PLAYER BULLETS vs ENEMIES ===
   for (let bi = player.bullets.length - 1; bi >= 0; bi--) {
     const b = player.bullets[bi];
+    if (b.hit) continue;
     for (const e of enemies) {
       if (!e.on || !e.al || e.deathAnim > 0) continue;
       const ex = eVis(e);
@@ -772,11 +821,18 @@ function update() {
         player.bullets.splice(bi, 1);
         e.hp--; e.ft = 5;
         if (e.hp <= 0) {
-          e.deathAnim = 18;
+          // Calculate escort multiplier
+          const escorts = enemies.filter(en => en.on && en.al && en.type === e.type && en !== e).length;
+          const multiplier = 1 + escorts * 0.5; // +50% per escort
           const diveBonus = e.st === 'dive' ? 2 : 1;
-          const pts = e.sc * diveBonus;
+          const pts = Math.floor(e.sc * multiplier * diveBonus);
+
+          e.deathAnim = 18;
           score += pts; combo++; comboTimer = 100;
           scorePopups.push({ x: ex, y: e.y, text: '+' + pts.toString(), life: 50, c: '#ffff00' });
+          if (escorts > 0) {
+            scorePopups.push({ x: ex, y: e.y + 12, text: 'x' + (1 + escorts * 0.5).toFixed(1), life: 40, c: '#ff8800' });
+          }
           shakeTimer = 4; shakeIntensity = 3;
         } else spawnP(b.x, b.y, '#ffffff', 2);
         break;
@@ -784,7 +840,7 @@ function update() {
     }
   }
 
-  // Spawn explosions after death anim
+  // === SPAWN EXPLOSIONS ===
   for (const e of enemies) {
     if (e.deathAnim === 1 && e.on && e.al) {
       const ex = eVis(e); e.on = false; e.al = false;
@@ -796,13 +852,10 @@ function update() {
       if ((e.type === 'boss' || e.type === 'boss2') && Math.random() < 0.35) {
         powerups.push({ x: ex, y: e.y, vy: 1, t: 'dual', life: 350, w: 20, h: 10 });
       }
-      if (enemies.filter(en => en.on && en.al).length === 0) {
-        for (let ii = 0; ii < 3; ii++) spawnP(ex + (Math.random() - 0.5) * 100, e.y + (Math.random() - 0.5) * 40, ['#ff0', '#f0f', '#0ff'][ii], 5);
-      }
     }
   }
 
-  // Enemy collision
+  // === ENEMY COLLISION ===
   for (const e of enemies) {
     if (!e.on || !e.al || e.deathAnim > 0 || player.inv > 0) continue;
     const ex = eVis(e);
@@ -811,15 +864,14 @@ function update() {
     }
   }
 
-  // Wave clear - continues indefinitely (no cap!)
+  // === WAVE CLEAR ===
   const alive = enemies.filter(e => e.on && e.al).length;
   if (alive === 0 && enemies.length > 0) {
     wave++;
-    // REMOVED: if (wave>25) wave=25; -- waves go on forever
     state = STATE.WAVE_TRANS;
     waveTimer = 100;
     waveClearTimer = 90;
-    waveClearMsg = 'WAVE ' + wave + ' CLEAR';
+    waveClearMsg = isChallengeStage ? '★ CHALLENGE CLEAR ★' : 'WAVE ' + wave + ' CLEAR';
     playSound('waveClear');
     for (let i = 0; i < 5; i++) {
       const bx = Math.random() * W, by = H * 0.3 + Math.random() * H * 0.3;
@@ -827,9 +879,10 @@ function update() {
       spawnP(bx, by, cols[Math.floor(Math.random() * cols.length)], 8);
     }
     shakeTimer = 10; shakeIntensity = 10; flashTimer = 5;
+    isChallengeStage = false;
   }
 
-  // Powerups
+  // === POWERUPS ===
   for (let i = powerups.length - 1; i >= 0; i--) {
     const p = powerups[i];
     p.y += p.vy; p.life--;
@@ -839,13 +892,13 @@ function update() {
     }
   }
 
-  // Score popups
+  // === SCORE POPUPS ===
   for (let i = scorePopups.length - 1; i >= 0; i--) {
     scorePopups[i].life--; scorePopups[i].y -= 0.4;
     if (scorePopups[i].life <= 0) scorePopups.splice(i, 1);
   }
 
-  // Form particles
+  // === FORM PARTICLES ===
   for (let i = formParticles.length - 1; i >= 0; i--) {
     const fp = formParticles[i];
     fp.life--; fp.x += fp.vx; fp.y += fp.vy;
@@ -858,7 +911,7 @@ function update() {
     if (t) formParticles.push({ x: t.x + formationX + (Math.random() - 0.5) * 10, y: t.y + (Math.random() - 0.5) * 10, vx: (Math.random() - 0.5) * 0.5, vy: -0.5 - Math.random() * 0.5, life: 20 + Math.random() * 10, c: t.type === 'boss' ? '#ff4444' : t.type === 'boss2' ? '#00ccff' : '#ffff00', sz: 0.3 + Math.random() * 0.3 });
   }
 
-  // Particles (cap)
+  // === PARTICLES ===
   for (let i = particles.length - 1; i >= 0; i--) {
     particles[i].life--; particles[i].x += particles[i].vx; particles[i].y += particles[i].vy;
     particles[i].vy += 0.03; particles[i].vx *= 0.96; particles[i].vy *= 0.96;
@@ -866,7 +919,7 @@ function update() {
   }
   if (particles.length > 60) particles.splice(0, particles.length - 60);
 
-  // Stars
+  // === STARS ===
   for (const s of stars) { s.y += s.speed; if (s.y > H) { s.y = 0; s.x = Math.random() * W; } }
 }
 
@@ -874,7 +927,7 @@ function shootAimed(e, x) {
   const dx = player.x - x, dy = player.y - e.y;
   const dist = Math.hypot(dx, dy);
   if (dist > 0) {
-    const spd = 2.2 + wave * 0.07;
+    const spd = 2.5 + wave * 0.08; // Faster bullets with waves
     enemyBullets.push({ x, y: e.y + e.h / 2, vx: (dx / dist) * spd, vy: (dy / dist) * spd, c: e.type === 'boss' ? '#ff8800' : '#ff4444' });
   }
 }
@@ -892,6 +945,8 @@ function hitPlayer() {
   } else {
     player.x = W / 2; player.inv = 180; player.dual = false; combo = 0;
     player.vx = 0; player.targetVx = 0; player.caught = false; player.caughtTimer = 0;
+    // Cancel rescue if active
+    rescueActive = false; rescuedShip = null;
   }
 }
 
@@ -959,9 +1014,10 @@ function drawMenu() {
   ctx.fillStyle = '#ff0'; ctx.font = '13px monospace';
   ctx.fillText('HIGH SCORE: ' + highScore.toString().padStart(8, '0'), W / 2, H * 0.54);
   ctx.fillStyle = '#666'; ctx.font = '11px monospace'; ctx.textAlign = 'right';
-  ctx.fillText(VERSION + ' restored playable', W - 15, H - 10);
+  ctx.fillText(VERSION, W - 15, H - 10);
+  // Animated enemy formation on menu
   for (let i = 0; i < 6; i++) {
-    const ex = (W * 0.1) + (mt * 20 + i * 55) % W;
+    const ex = (W * 0.1) + (mt * 15 + i * 55) % W;
     const ey = H * 0.22 + Math.sin(mt * 1.2 + i * 0.9) * 15;
     ctx.globalAlpha = 0.22; ctx.fillStyle = i % 3 === 0 ? '#f22' : (i % 3 === 1 ? '#ff0' : '#f0f');
     ctx.beginPath(); ctx.moveTo(ex, ey - 7); ctx.lineTo(ex - 5, ey); ctx.lineTo(ex, ey + 7); ctx.lineTo(ex + 5, ey);
@@ -994,34 +1050,66 @@ function drawGame() {
     ctx.fillText(s, W / 2, 34);
   }
 
-  // Attack wave indicator
-  if (attackWaveActive && nextAttackTime > 0 && nextAttackTime < 120) {
-    ctx.fillStyle = '#f00'; ctx.font = 'bold 10px monospace'; ctx.textAlign = 'center';
+  // Challenge stage indicator
+  if (isChallengeStage) {
+    ctx.fillStyle = '#ff0'; ctx.font = 'bold 10px monospace'; ctx.textAlign = 'center';
+    ctx.fillText('★ CHALLENGE STAGE ★', W / 2, 48);
+  }
+
+  // Rescue indicator
+  if (rescueActive) {
+    ctx.fillStyle = '#0f0'; ctx.font = 'bold 10px monospace'; ctx.textAlign = 'center';
     const pulse = Math.sin(Date.now() * 0.01) * 0.3 + 0.7;
-    ctx.globalAlpha = pulse; ctx.fillText('⚠ ATTACK WAVE ⚠', W / 2, 50); ctx.globalAlpha = 1;
+    ctx.globalAlpha = pulse; ctx.fillText('★ SHOOT THE BOSS TO RESCUE ★', W / 2, 48); ctx.globalAlpha = 1;
   }
 
   if (combo > 1 && comboTimer > 0) {
     ctx.fillStyle = '#ff0'; ctx.font = '10px monospace';
-    ctx.fillText('COMBO x' + (Math.floor(combo / 3) + 1), W / 2, 48);
+    ctx.fillText('COMBO x' + (Math.floor(combo / 3) + 1), W / 2, 60);
   }
 
-  // Tractor beam
+  // === TRACTOR BEAM (conical) ===
   if (tractorBeam) {
     ctx.save();
-    const tx = tractorBeam.x, ty = tractorBeam.y;
-    ctx.strokeStyle = 'rgba(255,50,50,' + (0.3 * tractorBeamAlpha) + ')'; ctx.lineWidth = 3;
-    ctx.beginPath(); ctx.moveTo(tx - Math.cos(tractorBeam.angle) * 200, ty - Math.sin(tractorBeam.angle) * 200);
-    ctx.lineTo(tx, ty); ctx.stroke();
-    ctx.strokeStyle = 'rgba(255,150,150,' + (0.6 * tractorBeamAlpha) + ')'; ctx.lineWidth = 1.5;
-    ctx.beginPath(); ctx.moveTo(tx - Math.cos(tractorBeam.angle) * 200, ty - Math.sin(tractorBeam.angle) * 200);
-    ctx.lineTo(tx, ty); ctx.stroke();
-    ctx.fillStyle = 'rgba(255,80,80,' + (0.4 * tractorBeamAlpha) + ')';
-    ctx.beginPath(); ctx.arc(tx, ty, 8, 0, Math.PI * 2); ctx.fill();
+    const bx = tractorBeam.x, by = tractorBeam.y;
+    const sx = tractorBeam.sourceX, sy = tractorBeam.sourceY;
+    const alpha = 0.3 * tractorBeamAlpha;
+    // Draw conical beam from boss to capture point
+    ctx.strokeStyle = 'rgba(255,50,50,' + alpha + ')'; ctx.lineWidth = 6;
+    ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(bx, by); ctx.stroke();
+    // Wider cone effect
+    ctx.strokeStyle = 'rgba(255,100,100,' + (alpha * 0.5) + ')'; ctx.lineWidth = 3;
+    const coneLen = 200;
+    const ca = tractorBeam.coneAngle;
+    ctx.beginPath();
+    ctx.moveTo(sx, sy);
+    ctx.lineTo(sx + Math.cos(tractorBeam.angle - ca) * coneLen, sy + Math.sin(tractorBeam.angle - ca) * coneLen);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(sx, sy);
+    ctx.lineTo(sx + Math.cos(tractorBeam.angle + ca) * coneLen, sy + Math.sin(tractorBeam.angle + ca) * coneLen);
+    ctx.stroke();
+    // Glow at capture point
+    ctx.fillStyle = 'rgba(255,80,80,' + (0.5 * tractorBeamAlpha) + ')';
+    ctx.beginPath(); ctx.arc(bx, by, 10, 0, Math.PI * 2); ctx.fill();
     ctx.restore();
   }
 
-  // Player ship - white/red/blue Galaga-style fighter, sized for phone portrait.
+  // === RESCUE SHIP (player's captured ship orbiting boss) ===
+  if (rescueActive && rescuedShip) {
+    ctx.save(); ctx.translate(rescuedShip.x, rescuedShip.y);
+    // Small version of player ship
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.moveTo(0, -8); ctx.lineTo(-4, 3); ctx.lineTo(-8, 8); ctx.lineTo(0, 5); ctx.lineTo(8, 8); ctx.lineTo(4, 3); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = '#e21b2d'; ctx.fillRect(-2, -2, 4, 8);
+    // Pulsing glow to show it's the player's ship
+    const pulse = Math.sin(Date.now() * 0.01) * 0.3 + 0.7;
+    ctx.strokeStyle = 'rgba(0,255,255,' + pulse + ')'; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.arc(0, 0, 12, 0, Math.PI * 2); ctx.stroke();
+    ctx.restore();
+  }
+
+  // === PLAYER SHIP ===
   ctx.save(); ctx.translate(player.x, player.y);
   if (player.inv > 0 && Math.floor(player.inv / 4) % 2 === 0) ctx.globalAlpha = 0.35;
   const ts = 3 + Math.sin(Date.now() * 0.02) * 2 + player.thrust * 3;
@@ -1047,14 +1135,14 @@ function drawGame() {
   if (player.caught) { ctx.strokeStyle = 'rgba(255,240,80,0.65)'; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(0, 0, 19, 0, Math.PI * 2); ctx.stroke(); }
   ctx.restore();
 
-  // Player bullets
+  // === PLAYER BULLETS ===
   for (const b of player.bullets) {
     ctx.fillStyle = b.color; ctx.shadowColor = b.color; ctx.shadowBlur = 5;
     ctx.fillRect(b.x - 2, b.y - 4, 4, 8);
   }
   ctx.shadowBlur = 0;
 
-  // Enemies
+  // === ENEMIES ===
   for (const e of enemies) {
     if (!e.on || !e.al) continue;
     const ex = eVis(e);
@@ -1070,42 +1158,77 @@ function drawGame() {
     }
     ctx.save(); ctx.translate(ex, e.y);
     const flash = e.ft > 0;
+
     if (e.type === 'boss') {
       ctx.fillStyle = flash ? '#fff' : (e.hp < e.mhp ? '#2678ff' : d.c); ctx.shadowColor = ctx.fillStyle; ctx.shadowBlur = 5;
+      // Boss Galaga sprite - more detailed
       ctx.beginPath(); ctx.moveTo(0, -16); ctx.lineTo(-18, -5); ctx.lineTo(-15, 10); ctx.lineTo(-6, 15); ctx.lineTo(0, 8); ctx.lineTo(6, 15); ctx.lineTo(15, 10); ctx.lineTo(18, -5); ctx.closePath(); ctx.fill();
       ctx.fillStyle = flash ? '#fff' : '#ffd21c'; ctx.beginPath(); ctx.arc(-7, -2, 3, 0, Math.PI * 2); ctx.arc(7, -2, 3, 0, Math.PI * 2); ctx.fill();
       ctx.fillStyle = '#ff3030'; ctx.fillRect(-4, -11, 8, 5);
-    } else if (e.type === 'butter') {
+      // Boss crown/crest
+      ctx.fillStyle = flash ? '#fff' : '#ffcc00';
+      ctx.beginPath(); ctx.moveTo(-8, -14); ctx.lineTo(-6, -18); ctx.lineTo(-2, -14); ctx.lineTo(0, -20); ctx.lineTo(2, -14); ctx.lineTo(6, -18); ctx.lineTo(8, -14); ctx.closePath(); ctx.fill();
+    } else if (e.type === 'butterfly') {
+      // Butterfly - wider wings, more colorful
       ctx.fillStyle = flash ? '#fff' : d.c; ctx.shadowColor = ctx.fillStyle; ctx.shadowBlur = 4;
-      ctx.beginPath(); ctx.moveTo(0, -12); ctx.lineTo(-15, 0); ctx.lineTo(-18, 12); ctx.lineTo(-4, 7); ctx.lineTo(0, 13); ctx.lineTo(4, 7); ctx.lineTo(18, 12); ctx.lineTo(15, 0); ctx.closePath(); ctx.fill();
-      ctx.fillStyle = flash ? '#fff' : d.a; ctx.globalAlpha = 0.85;
-      ctx.beginPath(); ctx.moveTo(-5, -3); ctx.lineTo(-12, 5); ctx.lineTo(-6, 5); ctx.closePath(); ctx.fill();
-      ctx.beginPath(); ctx.moveTo(5, -3); ctx.lineTo(12, 5); ctx.lineTo(6, 5); ctx.closePath(); ctx.fill(); ctx.globalAlpha = 1;
+      // Body
+      ctx.beginPath(); ctx.moveTo(0, -12); ctx.lineTo(-4, -4); ctx.lineTo(-3, 10); ctx.lineTo(0, 13); ctx.lineTo(3, 10); ctx.lineTo(4, -4); ctx.closePath(); ctx.fill();
+      // Wings - animate based on phase
+      const wingFlap = Math.sin(Date.now() * 0.01 + e.ph) * 3;
+      ctx.fillStyle = flash ? '#fff' : d.a;
+      ctx.beginPath(); ctx.moveTo(-4, -2); ctx.lineTo(-16 + wingFlap, -8); ctx.lineTo(-14 + wingFlap, 4); ctx.lineTo(-4, 6); ctx.closePath(); ctx.fill();
+      ctx.beginPath(); ctx.moveTo(4, -2); ctx.lineTo(16 - wingFlap, -8); ctx.lineTo(14 - wingFlap, 4); ctx.lineTo(4, 6); ctx.closePath(); ctx.fill();
+      // Eyes
+      ctx.fillStyle = '#000'; ctx.shadowBlur = 0;
+      ctx.beginPath(); ctx.arc(-3, -6, 2, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(3, -6, 2, 0, Math.PI * 2); ctx.fill();
     } else {
+      // Bee - smaller, simpler
       ctx.fillStyle = flash ? '#fff' : d.c; ctx.shadowColor = ctx.fillStyle; ctx.shadowBlur = 4;
       ctx.beginPath(); ctx.moveTo(0, -11); ctx.lineTo(-12, -1); ctx.lineTo(-10, 12); ctx.lineTo(-3, 7); ctx.lineTo(0, 13); ctx.lineTo(3, 7); ctx.lineTo(10, 12); ctx.lineTo(12, -1); ctx.closePath(); ctx.fill();
       ctx.fillStyle = flash ? '#fff' : d.a; ctx.beginPath(); ctx.arc(-6, 1, 3, 0, Math.PI * 2); ctx.arc(6, 1, 3, 0, Math.PI * 2); ctx.fill();
     }
-    ctx.fillStyle = '#000'; ctx.shadowBlur = 0;
-    ctx.beginPath(); ctx.arc(-e.w / 6, -1, 1.7, 0, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.arc(e.w / 6, -1, 1.7, 0, Math.PI * 2); ctx.fill();
+
+    // Eyes (for non-butterfly)
+    if (e.type !== 'butterfly') {
+      ctx.fillStyle = '#000'; ctx.shadowBlur = 0;
+      ctx.beginPath(); ctx.arc(-e.w / 6, -1, 1.7, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(e.w / 6, -1, 1.7, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // Champion star
     if (e.champion) { ctx.fillStyle = '#ff0'; ctx.font = 'bold 8px monospace'; ctx.textAlign = 'center'; ctx.fillText('★', 0, -e.h / 2 - 4); }
-    if (attackWaveActive && e.dt > 0 && e.dt <= 30 && e.st === 'form') {
+
+    // Attack warning indicator
+    if (e.dt > 0 && e.dt <= 30 && e.st === 'form') {
       if (Math.sin(Date.now() * 0.02) > 0) { ctx.fillStyle = '#f00'; ctx.font = 'bold 10px monospace'; ctx.textAlign = 'center'; ctx.fillText('!', 0, -e.h / 2 - 8); }
     }
+
+    // Health bar for multi-hp enemies
     if (e.mhp > 1 && e.hp < e.mhp) {
       const bw = e.w; ctx.fillStyle = '#333'; ctx.fillRect(-bw / 2, e.h / 2 + 2, bw, 2); ctx.fillStyle = e.hp > e.mhp * 0.5 ? '#0f0' : '#f00'; ctx.fillRect(-bw / 2, e.h / 2 + 2, bw * (e.hp / e.mhp), 2);
     }
+
+    // Escort count display for bosses
+    if (e.type === 'boss' || e.type === 'boss2') {
+      const escorts = enemies.filter(en => en.on && en.al && en.type === e.type && en !== e).length;
+      if (escorts > 0) {
+        ctx.fillStyle = '#ff8800'; ctx.font = '8px monospace'; ctx.textAlign = 'center';
+        ctx.fillText('+' + escorts, 0, e.h / 2 + 14);
+      }
+    }
+
     ctx.restore();
   }
 
-  // Form particles
+  // === FORM PARTICLES ===
   for (const fp of formParticles) {
     ctx.globalAlpha = fp.life / 30; ctx.fillStyle = fp.c;
     ctx.beginPath(); ctx.arc(fp.x, fp.y, fp.sz * (fp.life / 25), 0, Math.PI * 2); ctx.fill();
   }
   ctx.globalAlpha = 1;
 
-  // Enemy bullets
+  // === ENEMY BULLETS ===
   for (const b of enemyBullets) {
     ctx.fillStyle = b.c; ctx.shadowColor = b.c; ctx.shadowBlur = 4;
     ctx.beginPath(); ctx.arc(b.x, b.y, 2.2, 0, Math.PI * 2); ctx.fill();
@@ -1113,7 +1236,7 @@ function drawGame() {
   }
   ctx.shadowBlur = 0;
 
-  // Powerups
+  // === POWERUPS ===
   for (const p of powerups) {
     ctx.save();
     const ps = 1 + Math.sin(Date.now() * 0.007) * 0.12;
@@ -1125,21 +1248,21 @@ function drawGame() {
     ctx.restore();
   }
 
-  // Score popups
+  // === SCORE POPUPS ===
   for (const p of scorePopups) {
     ctx.save(); ctx.fillStyle = p.c; ctx.font = 'bold 10px monospace'; ctx.textAlign = 'center';
     ctx.globalAlpha = Math.min(p.life / 30, 1); ctx.shadowColor = p.c; ctx.shadowBlur = 3;
     ctx.fillText(p.text, p.x, p.y); ctx.restore();
   }
 
-  // Particles
+  // === PARTICLES ===
   for (const p of particles) {
     ctx.globalAlpha = p.life / 25; ctx.fillStyle = p.c;
     ctx.beginPath(); ctx.arc(p.x, p.y, p.sz * (p.life / 20), 0, Math.PI * 2); ctx.fill();
   }
   ctx.globalAlpha = 1;
 
-  // Wave transition
+  // === WAVE TRANSITION ===
   if (state === STATE.WAVE_TRANS) {
     ctx.save(); ctx.fillStyle = '#fff'; ctx.font = 'bold 32px monospace'; ctx.textAlign = 'center';
     ctx.shadowColor = '#f80'; ctx.shadowBlur = 12; ctx.fillText('WAVE ' + wave, W / 2, H / 2 - 8);
@@ -1147,7 +1270,7 @@ function drawGame() {
     ctx.fillText('Get ready...', W / 2, H / 2 + 18); ctx.restore();
   }
 
-  // Wave clear celebration
+  // === WAVE CLEAR CELEBRATION ===
   if (waveClearTimer > 0) {
     ctx.save(); const fadeIn = Math.min(1, (90 - waveClearTimer) / 15);
     ctx.globalAlpha = fadeIn; ctx.fillStyle = '#ff0'; ctx.font = 'bold 28px monospace'; ctx.textAlign = 'center';
